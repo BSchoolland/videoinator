@@ -1,4 +1,4 @@
-import { existsSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { join, extname, normalize } from "node:path";
 import { DEFAULT_CREDITS, DEV, MEDIA_DIR, PORT, WORKER_TOKEN } from "./config.ts";
 import * as D from "./db.ts";
@@ -101,6 +101,9 @@ route("GET", "/in/:token", (req, p) => {
   });
 });
 route("GET", "/media/:file", (req, p) => file(under(MEDIA_DIR, p.file), req));
+route("GET", "/api/stories", () => json({
+  stories: readdirSync(join(PUBLIC, "loops")).filter((f) => f.endsWith(".mp4") && f !== "transition.mp4").sort(),
+}));
 
 // ---------------------------------------------------------------- the public API
 route("POST", "/api/requests", async (req, _p, ip) => {

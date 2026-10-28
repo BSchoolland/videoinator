@@ -13,8 +13,6 @@ const IDEAS = [
 ];
 const POLL_MS = 2000;
 const LIVE_POLL_MS = 400;
-/** "True story of what's happening rn": one picked at random per visit. */
-const STORIES = ["laws-of-physics", "meteorforged"];
 let stop = () => {};
 
 /** Videos play with sound. Until the visitor has clicked or typed, browsers refuse that, so they start muted and
@@ -334,9 +332,18 @@ function chatScreen(id) {
 function cooking(id) {
   const s = mount("t-cooking");
   const eta = s.querySelector(".eta"), fill = s.querySelector(".fill");
+  // "True story of what's happening rn": a random one, then another random one each time it ends, never the same
+  // twice in a row. The list is whatever's in /loops (GET /api/stories), so adding one is dropping in the file.
   const story = s.querySelector(".story");
-  story.src = `/loops/${STORIES[Math.floor(Math.random() * STORIES.length)]}.mp4`;
-  withSound(story);
+  let stories = [], current = "";
+  const next = () => {
+    const pick = stories.filter((x) => x !== current);
+    current = (pick.length ? pick : stories)[Math.floor(Math.random() * (pick.length || stories.length))];
+    story.src = `/loops/${current}`;
+    withSound(story);
+  };
+  story.addEventListener("ended", next);
+  api("/api/stories").then((r) => { stories = r.stories; if (stories.length) next(); }).catch((x) => console.error("stories:", x));
   const stopGlow = glowFrom(story);
   let alive = true;
   stop = () => { alive = false; stopGlow(); };

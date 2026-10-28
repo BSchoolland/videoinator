@@ -14,7 +14,7 @@ const IDEAS = [
 const POLL_MS = 2000;
 const LIVE_POLL_MS = 400;
 /** "True story of what's happening rn": one picked at random per visit. */
-const STORIES = ["laws-of-physics"];
+const STORIES = ["laws-of-physics", "meteorforged"];
 let stop = () => {};
 
 /** Videos play with sound. Until the visitor has clicked or typed, browsers refuse that, so they start muted and

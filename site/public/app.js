@@ -28,6 +28,15 @@ const unmute = () => { for (const v of waitingForSound) if (v.isConnected) v.mut
 addEventListener("pointerdown", unmute, true);
 addEventListener("keydown", unmute, true);
 
+/** A one-line textarea that grows with its text; Enter sends, Shift+Enter is a new line. */
+function grow(t) {
+  const fit = () => { t.style.height = "auto"; t.style.height = `${t.scrollHeight}px`; t.style.overflowY = t.scrollHeight > t.clientHeight + 2 ? "auto" : "hidden"; };
+  t.addEventListener("input", fit);
+  t.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); t.form.requestSubmit(); } });
+  fit();
+  return fit;
+}
+
 async function api(path, opts = {}) {
   const res = await fetch(path, { headers: { "content-type": "application/json" }, ...opts, body: opts.body && JSON.stringify(opts.body) });
   const data = await res.json().catch(() => ({}));
@@ -130,8 +139,9 @@ function login() {
 function home() {
   const s = mount("t-home");
   const stopGlow = carousel(s.querySelector(".carousel"));
-  const f = s.querySelector("form"), input = f.querySelector("input"), err = s.querySelector(".err");
+  const f = s.querySelector("form"), input = f.querySelector("textarea"), err = s.querySelector(".err");
   const ghost = f.querySelector(".ghost");
+  grow(input);
   const stopTyping = autotype(input, ghost);
   // BenBot peeks over the bar and watches the words go in
   let bot = null;
@@ -195,7 +205,8 @@ function bubble(m, chat, onGenerate) {
 
 function chatScreen(id) {
   const s = mount("t-chat");
-  const log = s.querySelector(".log"), f = s.querySelector("form"), input = f.querySelector("input");
+  const log = s.querySelector(".log"), f = s.querySelector("form"), input = f.querySelector("textarea");
+  const refit = grow(input);
   // while the planner works: the bubbles it's writing (the newest typed out smoothly as its words stream in) and what
   // it's doing
   const liveBox = Object.assign(document.createElement("div"), { className: "live" });
@@ -294,9 +305,9 @@ function chatScreen(id) {
     e.preventDefault();
     const text = input.value.trim();
     if (!text) return;
-    input.value = "";
+    input.value = ""; refit();
     try { await api(`/api/chats/${id}/messages`, { method: "POST", body: { text } }); }
-    catch (x) { input.value = text; console.error(x); return; }
+    catch (x) { input.value = text; refit(); console.error(x); return; }
     poll();
   };
   // stay pinned to the bottom while content grows (images, clips, BenBot arriving), unless they've scrolled up

@@ -166,3 +166,16 @@ h2 { text-shadow: 3px 3px 0 var(--yellow), 6px 6px 0 var(--ink); rotate: -1deg; 
 
 .story { width: min(440px, 100%); aspect-ratio: 1; object-fit: cover; }
 .story-label { width: min(440px, 100%); }
+/* phones: the lead line sits above a full-width field */
+@media (max-width: 600px) {
+  .ask-box { flex-wrap: wrap; row-gap: 0; }
+  .ask-box .lead { width: 100%; font-size: 15px; color: #444; padding-top: 4px; }
+  .ask-box .field { flex-basis: 100%; }
+}
+
+/* the message box grows with what's typed, so long ideas stay readable */
+.ask-box textarea { flex: 1; min-width: 0; border: 0; outline: 0; font: 17px/1.4 var(--body); background: transparent; padding: 8px 0; resize: none; overflow: hidden; max-height: 40vh; }
+.ask-box .ghost { top: 8px; translate: none; line-height: 1.4; }
+.ask { align-items: flex-end; }
+.ask-box { align-items: flex-start; }
+.ask-box .lead { padding-top: 8px; line-height: 1.4; }

@@ -207,6 +207,11 @@ function chatScreen(id) {
   const s = mount("t-chat");
   const log = s.querySelector(".log"), f = s.querySelector("form"), input = f.querySelector("textarea");
   const refit = grow(input);
+  // Sticky bottom (as in TACOS's useStickyScroll): new content keeps the view pinned only while they're near the
+  // bottom; scrolling up detaches it, scrolling back down re-attaches. Nothing else ever moves the scroll.
+  let stuck = true;
+  log.addEventListener("scroll", () => { stuck = log.scrollHeight - log.scrollTop - log.clientHeight < 80; }, { passive: true });
+  const pin = () => { if (stuck) log.scrollTop = log.scrollHeight; };
   // while the planner works: the bubbles it's writing (the newest typed out smoothly as its words stream in) and what
   // it's doing
   const liveBox = Object.assign(document.createElement("div"), { className: "live" });
@@ -229,7 +234,7 @@ function chatScreen(id) {
     const behind = target.length - shown;
     if (behind > 0) shown += Math.max(1, Math.ceil(behind / 12));
     el.textContent = target.slice(0, shown);
-    log.scrollTop = log.scrollHeight;
+    pin();
     if (shown < target.length) raf = requestAnimationFrame(type);
   };
   const setDrafts = (json) => {
@@ -291,7 +296,7 @@ function chatScreen(id) {
       log.append(Object.assign(document.createElement("div"), { className: "msg bot failed", textContent: "That one blew up while cooking. Ben's been told, and you got your generation back. Start a new one from the home page." }));
       f.hidden = true;
     }
-    if (c.messages.length || waiting) log.scrollTop = log.scrollHeight;
+    pin();
   };
 
   const poll = async () => {
@@ -306,14 +311,12 @@ function chatScreen(id) {
     const text = input.value.trim();
     if (!text) return;
     input.value = ""; refit();
+    // sending re-attaches to the bottom, wherever they'd scrolled
+    stuck = true; pin();
     try { await api(`/api/chats/${id}/messages`, { method: "POST", body: { text } }); }
     catch (x) { input.value = text; refit(); console.error(x); return; }
     poll();
   };
-  // stay pinned to the bottom while content grows (images, clips, BenBot arriving), unless they've scrolled up
-  let stuck = true;
-  log.addEventListener("scroll", () => { stuck = log.scrollHeight - log.scrollTop - log.clientHeight < 80; });
-  const pin = () => { if (stuck) log.scrollTop = log.scrollHeight; };
   new ResizeObserver(pin).observe(log);
   new MutationObserver(pin).observe(log, { childList: true, subtree: true, characterData: true });
   log.addEventListener("load", pin, true);

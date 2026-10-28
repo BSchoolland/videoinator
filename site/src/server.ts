@@ -204,7 +204,7 @@ route("POST", "/api/worker/chats/:id/live", async (req, p) => {
 route("POST", "/api/worker/chats/:id/reply", async (req, p) => {
   worker(req);
   const b = await body(req);
-  try { D.botReplies(p.id, parts(b), str(b.session, "session", 100)); } catch (e) { if (e instanceof HttpError) throw e; throw new HttpError(409, (e as Error).message); }
+  try { D.botReplies(p.id, parts(b), str(b.session, "session", 100, false)); } catch (e) { if (e instanceof HttpError) throw e; throw new HttpError(409, (e as Error).message); }
   return json({ ok: true });
 });
 route("POST", "/api/worker/media", async (req) => {

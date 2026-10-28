@@ -151,7 +151,7 @@ type Part = { kind: Message["kind"]; body: string; media?: Media[] };
 export function botSays(chatId: string, parts: Part[]) {
   db.transaction(() => {
     const c = chat(chatId);
-    if (!c || c.status !== "thinking") throw new Error(`chat ${chatId} is not waiting on the planner (it is ${c?.status})`);
+    if (!c || !["thinking", "queued", "cooking"].includes(c.status)) throw new Error(`chat ${chatId} is not waiting on the planner (it is ${c?.status})`);
     for (const p of parts) addMessage(chatId, "bot", p.kind, p.body, p.media ?? []);
     run("UPDATE chats SET draft = '' WHERE id = ?", chatId);
   })();
@@ -161,7 +161,7 @@ export interface Step { text: string; at: number }
 /** The planner's live state: its steps so far and the bubble it's writing. */
 export function live(chatId: string, steps: Step[] | undefined, draft: string | undefined) {
   const c = chat(chatId);
-  if (!c || c.status !== "thinking") throw new Error(`chat ${chatId} is not waiting on the planner (it is ${c?.status})`);
+  if (!c || c.status !== "thinking") return; // they've moved on (hit Generate): nothing live to show
   if (steps) run("UPDATE chats SET steps = ? WHERE id = ?", JSON.stringify(steps), chatId);
   if (draft !== undefined) run("UPDATE chats SET draft = ? WHERE id = ?", draft, chatId);
 }
@@ -170,10 +170,17 @@ export function live(chatId: string, steps: Step[] | undefined, draft: string | 
 export function botReplies(chatId: string, parts: Part[], sessionId: string) {
   db.transaction(() => {
     const c = chat(chatId);
-    if (!c || c.status !== "thinking") throw new Error(`chat ${chatId} is not waiting on the planner (it is ${c?.status})`);
+    if (!c) throw new Error(`no chat ${chatId}`);
+    // they hit Generate on a plan while the planner was still finishing its turn: the turn just ends
+    if (["queued", "cooking", "done", "failed"].includes(c.status)) {
+      for (const p of parts) addMessage(chatId, "bot", p.kind, p.body, p.media ?? []);
+      run("UPDATE chats SET session_id = COALESCE(NULLIF(?, ''), session_id), claimed_at = NULL, steps = '[]', draft = '' WHERE id = ?", sessionId, chatId);
+      return;
+    }
+    if (c.status !== "thinking") throw new Error(`chat ${chatId} is not waiting on the planner (it is ${c.status})`);
     for (const p of parts) addMessage(chatId, "bot", p.kind, p.body, p.media ?? []);
     const newer = one<{ n: number }>("SELECT count(*) AS n FROM messages WHERE chat_id = ? AND sender = 'user' AND id > ?", chatId, c.claimed_upto ?? 0)!.n;
-    run("UPDATE chats SET status = ?, session_id = ?, claimed_at = NULL, steps = '[]', draft = '' WHERE id = ?", newer ? "awaiting" : "idle", sessionId, chatId);
+    run("UPDATE chats SET status = ?, session_id = COALESCE(NULLIF(?, ''), session_id), claimed_at = NULL, steps = '[]', draft = '' WHERE id = ?", newer ? "awaiting" : "idle", sessionId, chatId);
   })();
 }
 

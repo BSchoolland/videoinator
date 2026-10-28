@@ -10,6 +10,9 @@ import { runTurn } from "./planner.ts";
 import { get, post, SITE, type Chat, type Job, type Message, type Request, type User } from "./site.ts";
 
 const TURN_SLOTS = Number(process.env.TURN_SLOTS ?? 3);
+const JOB_SLOTS = Number(process.env.JOB_SLOTS ?? 2);
+/** Only one worker announces access requests (a second, temporary worker sets this to 0). */
+const ANNOUNCE = process.env.ANNOUNCE_REQUESTS !== "0";
 const stamp = () => new Date().toISOString().slice(11, 19);
 const log = (tag: string, s: string) => console.log(`${stamp()} [${tag}] ${s}`);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -58,11 +61,11 @@ async function nextTurn() {
 }
 
 // ---------------------------------------------------------------- videos
-let making = false;
+let making = 0;
 async function nextJob() {
   const j = await get<{ job: Job; chat: Chat; messages: Message[]; user: User }>("/jobs/next");
-  if (!j) return;
-  making = true;
+  if (!j) return false;
+  making++;
   const tag = `job ${j.job.id}`;
   const ac = new AbortController();
   log(tag, `video for ${j.user.name} (attempt ${j.job.attempts})`);
@@ -75,16 +78,17 @@ async function nextJob() {
       await tellBenBot(`Epic Video-inator: ${j.user.name}'s video FAILED (job ${j.job.id}, their credit was refunded and they were emailed): ${why.slice(0, 600)}. Run dir ~/videoinator-runs/jobs/${j.job.id}. Tell Ben in thread ${THREAD}.`)
         .catch((x) => log(tag, `could not tell Ben: ${msg(x)}`));
     })
-    .finally(() => { making = false; });
+    .finally(() => { making--; });
+  return true;
 }
 
-log("worker", `polling ${SITE}: ${TURN_SLOTS} planner slots, one video at a time`);
+log("worker", `polling ${SITE}: ${TURN_SLOTS} planner slots, ${JOB_SLOTS} video slots${ANNOUNCE ? "" : ", not announcing requests"}`);
 let lastRequests = 0;
 for (;;) {
   try {
-    if (Date.now() - lastRequests > 15_000) { lastRequests = Date.now(); await announceRequests(); }
+    if (ANNOUNCE && Date.now() - lastRequests > 15_000) { lastRequests = Date.now(); await announceRequests(); }
     while (turns < TURN_SLOTS && (await nextTurn()));
-    if (!making) await nextJob();
+    while (making < JOB_SLOTS && (await nextJob()));
   } catch (e) {
     log("worker", `poll failed: ${msg(e)}`);
   }

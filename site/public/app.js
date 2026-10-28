@@ -17,6 +17,17 @@ const LIVE_POLL_MS = 400;
 const STORIES = ["laws-of-physics"];
 let stop = () => {};
 
+/** Videos play with sound. Until the visitor has clicked or typed, browsers refuse that, so they start muted and
+ *  the sound comes on with the first click or keypress anywhere. */
+const waitingForSound = new Set();
+function withSound(v) {
+  v.muted = false;
+  v.play().catch(() => { v.muted = true; waitingForSound.add(v); v.play().catch((e) => console.error("video won't play:", e)); });
+}
+const unmute = () => { for (const v of waitingForSound) if (v.isConnected) v.muted = false; waitingForSound.clear(); };
+addEventListener("pointerdown", unmute, true);
+addEventListener("keydown", unmute, true);
+
 async function api(path, opts = {}) {
   const res = await fetch(path, { headers: { "content-type": "application/json" }, ...opts, body: opts.body && JSON.stringify(opts.body) });
   const data = await res.json().catch(() => ({}));
@@ -33,14 +44,14 @@ function mount(id) {
 function carousel(el) {
   let i = 0;
   const frame = Object.assign(document.createElement("div"), { className: "frame" });
-  const v = Object.assign(document.createElement("video"), { muted: true, autoplay: true, loop: true, playsInline: true, controls: true });
+  const v = Object.assign(document.createElement("video"), { loop: true, playsInline: true, controls: true });
   frame.append(v);
   const arrow = (cls, d, label) => {
     const b = Object.assign(document.createElement("button"), { className: `arrow ${cls}`, textContent: label, ariaLabel: cls });
     b.onclick = () => show(i + d);
     return b;
   };
-  const show = (k) => { i = (k + SAMPLES.length) % SAMPLES.length; v.poster = `/samples/${SAMPLES[i]}.jpg`; v.src = `/samples/${SAMPLES[i]}.mp4`; };
+  const show = (k) => { i = (k + SAMPLES.length) % SAMPLES.length; v.poster = `/samples/${SAMPLES[i]}.jpg`; v.src = `/samples/${SAMPLES[i]}.mp4`; withSound(v); };
   el.append(arrow("prev", -1, "‹"), frame, arrow("next", 1, "›"));
   show(0);
   return glowFrom(v);
@@ -306,6 +317,7 @@ function cooking(id) {
   const eta = s.querySelector(".eta"), fill = s.querySelector(".fill");
   const story = s.querySelector(".story");
   story.src = `/loops/${STORIES[Math.floor(Math.random() * STORIES.length)]}.mp4`;
+  withSound(story);
   const stopGlow = glowFrom(story);
   let alive = true;
   stop = () => { alive = false; stopGlow(); };
@@ -325,7 +337,9 @@ function cooking(id) {
 
 function done(c) {
   const s = mount("t-done");
-  s.querySelector("video").src = c.job.video;
+  const v = s.querySelector("video");
+  v.src = c.job.video;
+  withSound(v);
 }
 
 // ---------------------------------------------------------------- routing

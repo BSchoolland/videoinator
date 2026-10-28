@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# ./clip URL START SECONDS NAME  -- cut SECONDS (max 20) of a video page (YouTube, X, ...) from START (s or m:ss)
+#   -> refs/NAME.mp4 (720p, muted) and refs/NAME-sheet.jpg (8 frames, to look at with Read)
+set -euo pipefail
+[ $# -eq 4 ] || { echo 'usage: ./clip URL START SECONDS NAME' >&2; exit 2; }
+url=$1; start=$2; dur=$3; name=$4
+[[ "$url" =~ ^https?:// ]] || { echo "URL must be http(s)" >&2; exit 2; }
+[[ "$name" =~ ^[a-z0-9-]{1,40}$ ]] || { echo "NAME must be lowercase letters, digits, dashes" >&2; exit 2; }
+[[ "$dur" =~ ^[0-9]+$ ]] && [ "$dur" -ge 1 ] && [ "$dur" -le 20 ] || { echo "SECONDS must be 1..20" >&2; exit 2; }
+[[ "$start" =~ ^[0-9]+(:[0-9]{1,2}){0,2}$ ]] || { echo "START must be seconds or m:ss" >&2; exit 2; }
+mkdir -p refs
+tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
+s=0; IFS=: read -ra parts <<< "$start"; for p in "${parts[@]}"; do s=$((s * 60 + 10#$p)); done
+yt-dlp -q --no-warnings --js-runtimes node --no-playlist --no-exec -f "bv*[height<=720][ext=mp4]/bv*[height<=720]/b[height<=720]/b" \
+  --download-sections "*$s-$((s + dur + 1))" -o "$tmp/src.%(ext)s" -- "$url" >&2
+src=$(ls "$tmp"/src.* | head -1)
+ffmpeg -v error -y -i "$src" -t "$dur" -an -vf "scale=-2:min(720\,ih)" -c:v libx264 -preset veryfast -crf 26 -movflags +faststart "refs/$name.mp4"
+ffmpeg -v error -y -i "refs/$name.mp4" -vf "fps=8/$dur,scale=320:-2,tile=4x2" -frames:v 1 "refs/$name-sheet.jpg"
+echo "refs/$name.mp4 ($(ffprobe -v error -show_entries format=duration -of csv=p=0 refs/$name.mp4)s); frames in refs/$name-sheet.jpg"

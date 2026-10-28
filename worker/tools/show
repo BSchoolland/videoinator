@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# ./show "caption" FILE [FILE...]  -- clips (.mp4) or images (.jpg/.png/.webp) from refs/, shown side by side
+set -euo pipefail
+[ $# -ge 2 ] || { echo 'usage: ./show "caption" refs/a.mp4 [refs/b.jpg ...]' >&2; exit 2; }
+cap=$1; shift
+for f in "$@"; do
+  case "$f" in refs/*) ;; *) echo "only files in refs/ can be shown: $f" >&2; exit 2;; esac
+  [ -f "$f" ] || { echo "no such file: $f" >&2; exit 2; }
+  case "${f##*.}" in mp4|jpg|png|webp) ;; *) echo "can only show mp4, jpg, png, webp: $f" >&2; exit 2;; esac
+done
+python3 -c 'import json,sys; print(json.dumps({"kind":"media","body":sys.argv[1],"files":sys.argv[2:]}))' "$cap" "$@" >> outbox.jsonl
+echo "shown"

@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Epic Video-inator</title>
+<meta name="description" content="Generate legendary videos using the power of BenBot SI.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bungee&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<main id="app"></main>
+
+<template id="t-gate">
+  <section class="screen center">
+    <h1>Epic Video-inator</h1>
+    <p class="sub">you aren't ready for the power of BenBot SI</p>
+    <p class="pitch">For the low low price of your email address,<br>you too could have a video as hype as these:</p>
+    <div class="carousel"></div>
+    <button class="btn" data-go="request">Let me in!</button>
+    <button class="quiet" data-go="login">Already in? Get your link</button>
+  </section>
+</template>
+
+<template id="t-login">
+  <section class="screen center">
+    <h1>Epic Video-inator</h1>
+    <p class="sub">welcome back</p>
+    <form class="card form">
+      <input name="email" type="email" placeholder="Your email" maxlength="200" required autocomplete="email">
+      <button class="btn">Email me my link</button>
+      <p class="err"></p>
+    </form>
+  </section>
+</template>
+
+<template id="t-sent">
+  <section class="screen center">
+    <h1>Epic Video-inator</h1>
+    <p class="sub">If you're in, your link is in your inbox.</p>
+  </section>
+</template>
+
+<template id="t-request">
+  <section class="screen center">
+    <h1>Epic Video-inator</h1>
+    <p class="sub">state your business</p>
+    <form class="card form">
+      <input name="name" placeholder="Your name" maxlength="80" required autocomplete="name">
+      <input name="email" type="email" placeholder="Your email" maxlength="200" required autocomplete="email">
+      <textarea name="idea" placeholder="A video idea, if you've got one" maxlength="600" rows="3"></textarea>
+      <button class="btn">Let me in!</button>
+      <p class="err"></p>
+    </form>
+  </section>
+</template>
+
+<template id="t-requested">
+  <section class="screen center">
+    <h1>Epic Video-inator</h1>
+    <p class="sub">BenBot SI is judging you. You'll get an email.</p>
+  </section>
+</template>
+
+<template id="t-already">
+  <section class="screen center">
+    <h1>Epic Video-inator</h1>
+    <p class="sub">You're already in. Your link is in your inbox.</p>
+  </section>
+</template>
+
+<template id="t-home">
+  <section class="screen center">
+    <h1>Epic Video-inator</h1>
+    <p class="sub">Generate legendary videos using the power of BenBot SI</p>
+    <p class="pitch">some cool video ideas:</p>
+    <div class="carousel"></div>
+    <form class="ask">
+      <label class="ask-box">
+        <span class="lead">Make an epic video of</span>
+        <span class="field"><input name="text" maxlength="1900" autocomplete="off"><span class="ghost" aria-hidden="true"></span></span>
+      </label>
+      <button class="send" aria-label="Send">↑</button>
+    </form>
+    <p class="err"></p>
+  </section>
+</template>
+
+<template id="t-chat">
+  <section class="screen chat">
+    <div class="log"></div>
+    <form class="ask">
+      <label class="ask-box"><input name="text" maxlength="2000" autocomplete="off"></label>
+      <button class="send" aria-label="Send">↑</button>
+    </form>
+  </section>
+</template>
+
+<template id="t-cooking">
+  <section class="screen center">
+    <h2>Hype video is cooking</h2>
+    <p class="eta"></p>
+    <p class="story-label">True story of what's happening rn:</p>
+    <video class="story" src="/loops/cooking.mp4" autoplay muted loop playsinline></video>
+    <div class="bar"><div class="fill"></div></div>
+  </section>
+</template>
+
+<template id="t-done">
+  <section class="screen center">
+    <video class="final" controls autoplay playsinline></video>
+  </section>
+</template>
+
+<template id="t-transition">
+  <div class="transition"><video src="/loops/transition.mp4" autoplay muted playsinline></video></div>
+</template>
+
+<script src="/app.js" type="module"></script>
+</body>
+</html>

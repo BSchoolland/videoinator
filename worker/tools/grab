@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# ./grab IMAGE_URL NAME  -- download an image -> refs/NAME.jpg
+set -euo pipefail
+[ $# -eq 2 ] || { echo 'usage: ./grab IMAGE_URL NAME' >&2; exit 2; }
+[[ "$1" =~ ^https?:// ]] || { echo "URL must be http(s)" >&2; exit 2; }
+[[ "$2" =~ ^[a-z0-9-]{1,40}$ ]] || { echo "NAME must be lowercase letters, digits, dashes" >&2; exit 2; }
+mkdir -p refs
+tmp=$(mktemp); trap 'rm -f "$tmp"' EXIT
+curl -fsSL --max-time 30 --max-filesize 20000000 -A "Mozilla/5.0" -o "$tmp" -- "$1"
+ffmpeg -v error -y -i "$tmp" -frames:v 1 -vf "scale='min(1280,iw)':-2" "refs/$2.jpg"
+echo "refs/$2.jpg"

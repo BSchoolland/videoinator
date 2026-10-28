@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# ./plan "the pitch"  -- your plan for the video, shown with a Generate Video button
+set -euo pipefail
+[ $# -eq 1 ] && [ -n "$1" ] || { echo 'usage: ./plan "the pitch"' >&2; exit 2; }
+python3 -c 'import json,sys; print(json.dumps({"kind":"plan","body":sys.argv[1]}))' "$1" >> outbox.jsonl
+echo "plan posted with a Generate Video button"

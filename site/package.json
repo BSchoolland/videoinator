@@ -1,0 +1,6 @@
+{
+  "name": "videoinator-site",
+  "private": true,
+  "type": "module",
+  "scripts": { "start": "bun run src/server.ts", "dev": "DEV=1 DATA_DIR=./data bun run src/server.ts" }
+}

@@ -1,0 +1,92 @@
+// The homeserver worker: announces access requests to Ben, answers planner turns, makes videos.
+// Usage: node worker/worker.ts   (SITE, WORKER_TOKEN, BEN_CHANNEL from the env, worker/.env or ~/.config/videoinator/env)
+import { execFile } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { promisify } from "node:util";
+import { Broken, makeVideo } from "./make.ts";
+import { runTurn } from "./planner.ts";
+import { get, post, SITE, type Chat, type Job, type Message, type Request, type User } from "./site.ts";
+
+const TURN_SLOTS = Number(process.env.TURN_SLOTS ?? 3);
+const stamp = () => new Date().toISOString().slice(11, 19);
+const log = (tag: string, s: string) => console.log(`${stamp()} [${tag}] ${s}`);
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const msg = (e: unknown) => (e instanceof Error ? e.message : String(e));
+const run = promisify(execFile);
+
+// ---------------------------------------------------------------- access requests
+const REPORT = path.join(os.homedir(), "Projects/benbot/scripts/report");
+const THREAD = process.env.BEN_CHANNEL;
+if (!THREAD) throw new Error("BEN_CHANNEL (Ben's Video-inator thread) must be set");
+
+/** Everything Ben should hear goes to BenBot's conductor, which decides how to tell him. */
+const tellBenBot = (text: string) => run(REPORT, ["--from", "videoinator", text]);
+
+/** A request goes to BenBot's conductor, which decides what to tell Ben and asks him in his thread. */
+export const requestReport = (r: Request) => `Epic Video-inator access request (benbot.si): ${r.name} <${r.email}>, request id ${r.id}.
+Their video idea: ${r.idea ? `"${r.idea}"` : "(none given)"}
+Message Ben about it in thread ${THREAD}: who this is if you know them (TEAM/, your memory, the email domain), whether you'd approve, and how many generations you'd give (default 5, all time). He answers there; the session in that thread approves with \`node ~/Projects/videoinator/worker/approve.ts approve ${r.id} <n>\` or \`deny ${r.id}\`.`;
+
+async function announceRequests() {
+  for (const r of (await get<Request[]>("/requests")) ?? []) {
+    await tellBenBot(requestReport(r));
+    await post(`/requests/${r.id}/announced`, {});
+    log("requests", `reported ${r.id} (${r.email}) to BenBot`);
+  }
+}
+
+// ---------------------------------------------------------------- planner turns
+let turns = 0;
+async function nextTurn() {
+  const t = await get<{ chat: Chat; messages: Message[]; user: User }>("/turns/next");
+  if (!t) return false;
+  turns++;
+  const tag = `chat ${t.chat.id}`;
+  log(tag, `turn for ${t.user.name}`);
+  runTurn(t, (s) => log(tag, s))
+    .catch(async (e) => {
+      log(tag, `TURN FAILED: ${msg(e)}`);
+      await post(`/chats/${t.chat.id}/reply`, { parts: [{ kind: "text", body: "My brain blue-screened for a second there. Say that again?" }], session: t.chat.session_id ?? "" })
+        .catch((x) => log(tag, `could not post the error reply: ${msg(x)}`));
+      await tellBenBot(`Epic Video-inator: a planner turn failed for ${t.user.name} (chat ${t.chat.id}); they were shown "My brain blue-screened for a second there. Say that again?". Error: ${msg(e).slice(0, 500)}. Tell Ben in thread ${THREAD}.`)
+        .catch((x) => log(tag, `could not tell Ben: ${msg(x)}`));
+    })
+    .finally(() => turns--);
+  return true;
+}
+
+// ---------------------------------------------------------------- videos
+let making = false;
+async function nextJob() {
+  const j = await get<{ job: Job; chat: Chat; messages: Message[]; user: User }>("/jobs/next");
+  if (!j) return;
+  making = true;
+  const tag = `job ${j.job.id}`;
+  const ac = new AbortController();
+  log(tag, `video for ${j.user.name} (attempt ${j.job.attempts})`);
+  makeVideo(j, (s) => log(tag, s), ac.signal)
+    .then(() => tellBenBot(`Epic Video-inator: ${j.user.name}'s video is done and they've been emailed (job ${j.job.id}, files in ~/videoinator-runs/jobs/${j.job.id}, share cut out/cycle-2-share.mp4, critique critique-c1.md). Tell Ben in thread ${THREAD}; watch it first if you can.`))
+    .catch(async (e) => {
+      const why = e instanceof Broken ? e.message : `something broke: ${msg(e)}`;
+      log(tag, `FAILED: ${why}`);
+      await post(`/jobs/${j.job.id}/fail`, { error: why }).catch((x) => log(tag, `could not fail the job: ${msg(x)}`));
+      await tellBenBot(`Epic Video-inator: ${j.user.name}'s video FAILED (job ${j.job.id}, their credit was refunded and they were emailed): ${why.slice(0, 600)}. Run dir ~/videoinator-runs/jobs/${j.job.id}. Tell Ben in thread ${THREAD}.`)
+        .catch((x) => log(tag, `could not tell Ben: ${msg(x)}`));
+    })
+    .finally(() => { making = false; });
+}
+
+log("worker", `polling ${SITE}: ${TURN_SLOTS} planner slots, one video at a time`);
+let lastRequests = 0;
+for (;;) {
+  try {
+    if (Date.now() - lastRequests > 15_000) { lastRequests = Date.now(); await announceRequests(); }
+    while (turns < TURN_SLOTS && (await nextTurn()));
+    if (!making) await nextJob();
+  } catch (e) {
+    log("worker", `poll failed: ${msg(e)}`);
+  }
+  await sleep(2000);
+}

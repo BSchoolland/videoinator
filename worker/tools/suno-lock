@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# suno-lock take | drop  -- one video at a time in Ben's Suno tab (creating and recording both go through his Chrome).
+# take blocks until the lock is free (up to 40 min), then holds it for at most 30 min; drop releases it early.
+set -euo pipefail
+LOCK=$HOME/.cache/videoinator/suno.lock
+PIDF=$PWD/.suno-lock.pid
+mkdir -p "$(dirname "$LOCK")"
+case "${1:-}" in
+  take)
+    [ -f "$PIDF" ] && kill -0 "$(cat "$PIDF")" 2>/dev/null && { echo "already holding the Suno lock"; exit 0; }
+    setsid flock -o "$LOCK" sleep 1800 & echo $! > "$PIDF"
+    trap 'kill -- -"$(cat "$PIDF")" 2>/dev/null; rm -f "$PIDF"; exit 1' INT TERM
+    for _ in $(seq 2400); do
+      pgrep -P "$(cat "$PIDF")" -x sleep >/dev/null && { echo "holding the Suno lock (released after 30 min or on drop)"; exit 0; }
+      kill -0 "$(cat "$PIDF")" 2>/dev/null || { echo "the lock holder died" >&2; exit 1; }
+      sleep 1
+    done
+    kill -- -"$(cat "$PIDF")" 2>/dev/null; rm -f "$PIDF"
+    echo "waited 40 min for another video's Suno session; giving up" >&2; exit 1 ;;
+  drop)
+    [ -f "$PIDF" ] && kill -- -"$(cat "$PIDF")" 2>/dev/null || true
+    rm -f "$PIDF"; echo "Suno lock released" ;;
+  *) echo "usage: suno-lock take|drop" >&2; exit 2 ;;
+esac

@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# ./say "message"  -- a chat bubble to the user
+set -euo pipefail
+[ $# -eq 1 ] && [ -n "$1" ] || { echo 'usage: ./say "message"' >&2; exit 2; }
+python3 -c 'import json,sys; print(json.dumps({"kind":"text","body":sys.argv[1]}))' "$1" >> outbox.jsonl
+echo "said"

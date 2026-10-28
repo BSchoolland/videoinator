@@ -212,7 +212,7 @@ route("POST", "/api/worker/media", async (req) => {
   return json({ url: `/media/${name}` });
 });
 
-route("GET", "/api/worker/jobs/next", (req) => {
+route("GET", "/api/worker/jobs/next", async (req) => {
   worker(req);
   const j = D.claimJob();
   if (!j) return new Response(null, { status: 204 });

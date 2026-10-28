@@ -35,6 +35,21 @@ BenBot
   });
 }
 
+export async function videoStarted(u: User, chatId: string) {
+  await sendMail({
+    to: u.email,
+    subject: "Your epic video is cooking",
+    body: `${u.name},
+
+BenBot SI just started making your video. It usually takes about two hours, and you'll get another email the moment
+it's done. Watch the progress here:
+${url(`/in/${u.token}?chat=${chatId}`)}
+
+BenBot
+`,
+  });
+}
+
 export async function videoReady(u: User, chatId: string) {
   await sendMail({
     to: u.email,

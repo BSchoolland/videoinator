@@ -217,6 +217,8 @@ route("GET", "/api/worker/jobs/next", (req) => {
   const j = D.claimJob();
   if (!j) return new Response(null, { status: 204 });
   const c = D.chat(j.chat_id)!;
+  // once per video: a reclaimed job (worker restart) doesn't email again
+  if (j.attempts === 1) await E.videoStarted(D.userById(c.user_id)!, c.id);
   return json({ job: j, chat: c, messages: D.messages(c.id), user: D.userById(c.user_id) });
 });
 route("POST", "/api/worker/jobs/:id/progress", async (req, p) => {

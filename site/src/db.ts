@@ -33,10 +33,15 @@ CREATE TABLE IF NOT EXISTS jobs (
 CREATE INDEX IF NOT EXISTS messages_chat ON messages(chat_id, id);
 `);
 // live: what the planner is doing right now and the bubble it's mid-way through writing, while it's thinking
-for (const col of ["steps TEXT NOT NULL DEFAULT '[]'", "draft TEXT NOT NULL DEFAULT ''"]) {
+const addColumn = (table: string, col: string) => {
   const name = col.split(" ")[0];
-  if (!(db.query("PRAGMA table_info(chats)").all() as { name: string }[]).some((c) => c.name === name)) db.exec(`ALTER TABLE chats ADD COLUMN ${col}`);
-}
+  if (!(db.query(`PRAGMA table_info(${table})`).all() as { name: string }[]).some((c) => c.name === name)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${col}`);
+};
+for (const col of ["steps TEXT NOT NULL DEFAULT '[]'", "draft TEXT NOT NULL DEFAULT ''"]) addColumn("chats", col);
+// the idea they gave when asking for access, waiting in the box on their first visit
+addColumn("users", "idea TEXT NOT NULL DEFAULT ''");
+db.exec(`UPDATE users SET idea = COALESCE((SELECT r.idea FROM requests r WHERE lower(r.email) = lower(users.email)
+  AND r.status = 'approved' AND r.idea != '' ORDER BY r.created_at DESC LIMIT 1), '') WHERE idea = ''`);
 
 export const newId = (bytes = 8) => randomBytes(bytes).toString("hex");
 const now = () => Date.now();
@@ -46,7 +51,7 @@ const now = () => Date.now();
 export type ChatStatus = "awaiting" | "thinking" | "idle" | "queued" | "cooking" | "done" | "failed";
 export interface Media { url: string; type: "video" | "image"; caption?: string }
 export interface Request { id: string; name: string; email: string; idea: string; status: string; announced: number; created_at: number }
-export interface User { id: string; name: string; email: string; token: string; credits: number; used: number }
+export interface User { id: string; name: string; email: string; token: string; credits: number; used: number; idea: string }
 export interface Chat { id: string; user_id: string; status: ChatStatus; claimed_at: number | null; claimed_upto: number | null; session_id: string | null; created_at: number; steps: string; draft: string }
 export interface Message { id: number; chat_id: string; sender: "user" | "bot"; kind: "text" | "media" | "plan"; body: string; media: Media[]; created_at: number }
 export interface Job { id: string; chat_id: string; plan_msg_id: number; status: string; stage: string; pct: number; eta_at: number | null; claimed_at: number | null; heartbeat_at: number | null; attempts: number; video: string | null; error: string | null; created_at: number; finished_at: number | null }
@@ -75,12 +80,12 @@ export function approve(reqId: string, credits: number): User {
     run("UPDATE requests SET status = 'approved', decided_at = ? WHERE id = ?", now(), reqId);
     const existing = userByEmail(r.email);
     if (existing) {
-      run("UPDATE users SET credits = credits + ? WHERE id = ?", credits, existing.id);
+      run("UPDATE users SET credits = credits + ?, idea = CASE WHEN ? != '' THEN ? ELSE idea END WHERE id = ?", credits, r.idea, r.idea, existing.id);
       return userById(existing.id)!;
     }
     const id = newId(6);
-    run("INSERT INTO users (id, name, email, token, credits, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-      id, r.name, r.email, newId(18), credits, now());
+    run("INSERT INTO users (id, name, email, token, credits, idea, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      id, r.name, r.email, newId(18), credits, r.idea, now());
     return userById(id)!;
   })();
 }

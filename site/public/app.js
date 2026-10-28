@@ -136,12 +136,17 @@ function login() {
   };
 }
 
-function home() {
+function home(me = {}) {
   const s = mount("t-home");
   const stopGlow = carousel(s.querySelector(".carousel"));
   const f = s.querySelector("form"), input = f.querySelector("textarea"), err = s.querySelector(".err");
   const ghost = f.querySelector(".ghost");
   grow(input);
+  // the idea from their access request, ready to send on their first visit
+  if (me.idea) {
+    input.value = me.idea.replace(/^\s*(make|generate|create)\s+(me\s+)?an?\s+(epic\s+)?video\s+(of|about)\s+/i, "");
+    input.dispatchEvent(new Event("input"));
+  }
   const stopTyping = autotype(input, ghost);
   // BenBot peeks over the bar and watches the words go in
   let bot = null;
@@ -362,7 +367,7 @@ async function route() {
   try { meData = await api("/api/me"); }
   catch (x) { if (x.status === 401) return gate(); throw x; }
   const m = /^#chat\/(\w+)$/.exec(location.hash);
-  if (!m) return home();
+  if (!m) return home(meData);
   const c = await api(`/api/chats/${m[1]}`).catch((x) => { if (x.status === 404) return null; throw x; });
   if (!c) { location.hash = ""; return home(); }
   if (c.status === "done") return done(c);

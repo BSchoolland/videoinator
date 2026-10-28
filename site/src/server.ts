@@ -125,7 +125,11 @@ route("POST", "/api/login", async (req, _p, ip) => {
 
 route("GET", "/api/me", (req) => {
   const u = me(req);
-  return json({ name: u.name, left: u.credits - u.used, chats: D.chatsOf(u.id).map((c) => ({ id: c.id, status: c.status, first: D.messages(c.id)[0]?.body ?? "" })) });
+  const chats = D.chatsOf(u.id);
+  return json({
+    name: u.name, left: u.credits - u.used, idea: chats.length ? "" : u.idea,
+    chats: chats.map((c) => ({ id: c.id, status: c.status, first: D.messages(c.id)[0]?.body ?? "" })),
+  });
 });
 
 route("POST", "/api/chats", async (req) => {

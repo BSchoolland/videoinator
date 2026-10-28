@@ -207,7 +207,10 @@ export function generate(c: Chat, planMsgId: number): Job {
 export function claimJob(): Job | null {
   return db.transaction(() => {
     run("UPDATE jobs SET status = 'queued' WHERE status = 'running' AND heartbeat_at < ?", now() - JOB_LEASE_MS);
-    const j = one<Job>("SELECT * FROM jobs WHERE status = 'queued' ORDER BY created_at LIMIT 1");
+    // one video per person at a time: someone's second video waits for their first, others' go ahead of it
+    const j = one<Job>(`SELECT j.* FROM jobs j JOIN chats c ON c.id = j.chat_id WHERE j.status = 'queued'
+      AND c.user_id NOT IN (SELECT c2.user_id FROM jobs j2 JOIN chats c2 ON c2.id = j2.chat_id WHERE j2.status = 'running')
+      ORDER BY j.created_at LIMIT 1`);
     if (!j) return null;
     run("UPDATE jobs SET status = 'running', claimed_at = ?, heartbeat_at = ?, attempts = attempts + 1 WHERE id = ?", now(), now(), j.id);
     run("UPDATE chats SET status = 'cooking' WHERE id = ?", j.chat_id);

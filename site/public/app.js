@@ -1,3 +1,5 @@
+import { benbot } from "./bot.js";
+
 const app = document.getElementById("app");
 const SAMPLES = ["roadster-hop", "grok-hype", "ssd-brawl", "v2v-assemble"];
 const IDEAS = [
@@ -39,6 +41,20 @@ function carousel(el) {
   const show = (k) => { i = (k + SAMPLES.length) % SAMPLES.length; v.poster = `/samples/${SAMPLES[i]}.jpg`; v.src = `/samples/${SAMPLES[i]}.mp4`; };
   el.append(arrow("prev", -1, "‹"), frame, arrow("next", 1, "›"));
   show(0);
+  return glowFrom(v);
+}
+
+/** The playing video's colors, blurred huge behind the page. */
+function glowFrom(v) {
+  let c = document.getElementById("glow");
+  if (!c) { c = Object.assign(document.createElement("canvas"), { id: "glow", width: 32, height: 18 }); document.body.prepend(c); }
+  const ctx = c.getContext("2d");
+  let timer = setInterval(() => {
+    if (v.readyState < 2) return;
+    ctx.drawImage(v, 0, 0, 32, 18);
+    c.classList.add("on");
+  }, 120);
+  return () => { clearInterval(timer); c.classList.remove("on"); };
 }
 
 /** Types the ideas into the empty input's placeholder, one after another. */
@@ -61,7 +77,7 @@ function autotype(input, ghost) {
 // ---------------------------------------------------------------- screens
 function gate() {
   const s = mount("t-gate");
-  carousel(s.querySelector(".carousel"));
+  stop = carousel(s.querySelector(".carousel"));
   s.querySelector("[data-go=request]").onclick = request;
   s.querySelector("[data-go=login]").onclick = login;
 }
@@ -100,16 +116,24 @@ function login() {
 
 function home() {
   const s = mount("t-home");
-  carousel(s.querySelector(".carousel"));
+  const stopGlow = carousel(s.querySelector(".carousel"));
   const f = s.querySelector("form"), input = f.querySelector("input"), err = s.querySelector(".err");
   const ghost = f.querySelector(".ghost");
-  stop = autotype(input, ghost);
+  const stopTyping = autotype(input, ghost);
+  // BenBot peeks over the bar and watches the words go in
+  let bot = null;
+  benbot("peek").then((b) => { bot = b; f.prepend(b.el); });
+  const watch = () => bot?.look(Math.min(1, (input.value || ghost.textContent).length / 40) * 1.6 - .6, .5, 600);
+  const watching = setInterval(watch, 300);
+  input.addEventListener("input", () => { watch(); if (input.value.length === 1) bot?.bounce(); });
+  stop = () => { stopGlow(); stopTyping(); clearInterval(watching); bot?.stop(); };
   input.focus();
   f.onsubmit = async (e) => {
     e.preventDefault();
     const text = input.value.trim();
     if (!text) return;
     f.querySelector("button").disabled = true;
+    bot?.hop();
     try {
       const chat = await api("/api/chats", { method: "POST", body: { text: `Make an epic video of ${text}` } });
       await transition();
@@ -166,10 +190,13 @@ function chatScreen(id) {
   const working = Object.assign(document.createElement("div"), { className: "working", innerHTML: "<span class='pulse'></span><span class='what'></span>" });
   const what = working.querySelector(".what");
   liveBox.append(drafts, working);
+  // BenBot sits at the bottom of the chat: thinks while it works, bounces when a bubble lands, hops on a plan
+  let bot = null, first = true;
+  benbot().then((b) => { bot = b; working.prepend(b.el); bot.think(status === "awaiting" || status === "thinking"); });
   let last = 0, alive = true, status = "";
   const landed = [];
   let target = "", shown = 0, raf = 0;
-  stop = () => { alive = false; cancelAnimationFrame(raf); };
+  stop = () => { alive = false; cancelAnimationFrame(raf); bot?.stop(); };
 
   const type = () => {
     raf = 0;
@@ -196,6 +223,7 @@ function chatScreen(id) {
   };
   const setDoing = (text) => {
     if (what.textContent === text) return;
+    if (what.textContent) bot?.look(Math.random() * 2 - 1, -.6, 1200);
     what.textContent = text;
     what.classList.remove("swap"); void what.offsetWidth; what.classList.add("swap");
   };
@@ -213,21 +241,28 @@ function chatScreen(id) {
 
   const render = (c) => {
     for (const m of c.messages) {
-      log.insertBefore(bubble(m, c, generate), liveBox.isConnected ? liveBox : null);
+      const el = bubble(m, c, generate);
+      if (!first) el.classList.add("land");
+      log.insertBefore(el, liveBox.isConnected ? liveBox : null);
       last = m.id;
-      if (m.sender === "bot") landed.push(m.body);
+      if (m.sender === "bot") {
+        landed.push(m.body);
+        if (!first) m.kind === "plan" ? bot?.hop() : bot?.bounce();
+      }
     }
+    first = false;
     status = c.status;
     if (["queued", "cooking", "done"].includes(status)) return route();
     // only the newest plan can be generated
     const plans = log.querySelectorAll("[data-plan]");
     plans.forEach((b, k) => { b.hidden = k !== plans.length - 1 || status === "failed"; });
     const waiting = status === "awaiting" || status === "thinking";
+    if (!liveBox.isConnected) log.append(liveBox);
+    bot?.think(waiting);
     if (waiting) {
-      if (!liveBox.isConnected) log.append(liveBox);
       setDrafts(c.live?.draft ?? "");
       setDoing(c.live?.steps?.at(-1)?.text ?? "Thinking");
-    } else { liveBox.remove(); setDrafts(""); }
+    } else { setDrafts(""); what.textContent = ""; }
     if (status === "failed" && !log.querySelector(".failed")) {
       log.append(Object.assign(document.createElement("div"), { className: "msg bot failed", textContent: "That one blew up while cooking. Ben's been told, and you got your generation back. Start a new one from the home page." }));
       f.hidden = true;
@@ -251,6 +286,15 @@ function chatScreen(id) {
     catch (x) { input.value = text; console.error(x); return; }
     poll();
   };
+  // stay pinned to the bottom while content grows (images, clips, BenBot arriving), unless they've scrolled up
+  let stuck = true;
+  log.addEventListener("scroll", () => { stuck = log.scrollHeight - log.scrollTop - log.clientHeight < 80; });
+  const pin = () => { if (stuck) log.scrollTop = log.scrollHeight; };
+  new ResizeObserver(pin).observe(log);
+  new MutationObserver(pin).observe(log, { childList: true, subtree: true, characterData: true });
+  log.addEventListener("load", pin, true);
+  log.addEventListener("loadedmetadata", pin, true);
+  input.addEventListener("input", () => bot?.look(-.2, 1, 900));
   input.focus();
   poll();
 }

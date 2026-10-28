@@ -97,3 +97,69 @@ h2 { font: 400 clamp(32px, 5.5vw, 60px)/1.05 var(--display); }
 /* idea -> chat */
 .transition { position: fixed; inset: 0; background: #000; z-index: 10; display: grid; place-items: center; }
 .transition video { width: 100%; height: 100%; object-fit: cover; }
+
+/* ================================================================ sticker-pop */
+:root { --pink: #ff7ac6; --pop: 6px 6px 0 var(--ink); --pop-sm: 4px 4px 0 var(--ink); }
+html, body { background: transparent; }
+body { background: var(--paper); }
+
+h1 {
+  text-shadow: 3px 3px 0 var(--yellow), 6px 6px 0 var(--pink), 9px 9px 0 var(--ink);
+  rotate: -1.5deg; margin-bottom: 8px;
+}
+h2 { text-shadow: 3px 3px 0 var(--yellow), 6px 6px 0 var(--ink); rotate: -1deg; }
+
+.carousel .frame { box-shadow: var(--pop); rotate: -1deg; transition: rotate .3s; }
+.carousel:hover .frame { rotate: 0deg; }
+.carousel .arrow { transition: translate .15s, color .15s; }
+.carousel .prev:hover { translate: -4px -50%; color: var(--pink); }
+.carousel .next:hover { translate: 4px -50%; color: var(--pink); }
+
+.btn { box-shadow: var(--pop); transition: translate .08s, box-shadow .08s, rotate .15s, background .15s; }
+.btn:hover { rotate: -1.5deg; background: var(--yellow); }
+.btn.go:hover { background: var(--pink); }
+.btn:active { translate: 4px 4px; box-shadow: 2px 2px 0 var(--ink); }
+
+.card { box-shadow: var(--pop); background: var(--paper); }
+.form input, .form textarea { box-shadow: 3px 3px 0 var(--ink); }
+.form input:focus, .form textarea:focus { outline: 0; box-shadow: 3px 3px 0 var(--pink); }
+
+.ask { box-shadow: var(--pop); transition: box-shadow .15s; position: relative; isolation: isolate; }
+.ask:focus-within { box-shadow: 6px 6px 0 var(--pink); }
+.send { transition: background .15s, rotate .2s; }
+.send:hover:not(:disabled) { background: var(--yellow); rotate: -15deg; }
+
+.msg { box-shadow: var(--pop-sm); background: var(--paper); }
+.msg.user { background: var(--yellow); rotate: .8deg; }
+.msg.plan { box-shadow: 6px 6px 0 var(--pink), 9px 9px 0 var(--ink); }
+.msg.land { animation: land .35s cubic-bezier(.3, 1.6, .5, 1); }
+@keyframes land { from { scale: .85; translate: 0 10px; opacity: 0; } }
+
+.bar { box-shadow: var(--pop); }
+.story { box-shadow: var(--pop); rotate: -1deg; }
+.final { box-shadow: var(--pop); }
+
+/* the playing video lights the page */
+#glow { position: fixed; inset: -10%; width: 120%; height: 120%; z-index: -1; filter: blur(90px) saturate(2.4) brightness(1.5); opacity: 0; transition: opacity 1.2s; pointer-events: none; }
+#glow.on { opacity: .42; }
+
+/* BenBot */
+.bb { width: 64px; height: 64px; flex: none; display: block; }
+.bb svg { width: 100%; height: 100%; overflow: visible; }
+.bb .body { transform-origin: 50% 95%; animation: idle 2.4s ease-in-out infinite; }
+.bb .eyes { transition: translate .12s ease-out; }
+.bb .eye { transition: scale .06s; }
+.bb.blink .eye { scale: 1 .12; }
+.bb.bounce.bounce .body { animation: bounce .45s cubic-bezier(.3, 1.6, .5, 1); }
+.bb.hop.hop .body { animation: hop .7s cubic-bezier(.3, 1.4, .5, 1); }
+.bb.think .body { animation: think 1s ease-in-out infinite; }
+@keyframes idle { 50% { translate: 0 -3px; } }
+@keyframes think { 25% { rotate: -5deg; } 75% { rotate: 5deg; } }
+@keyframes bounce { 0% { scale: 1.15 .82; } 40% { scale: .92 1.1; translate: 0 -8px; } 100% { scale: 1 1; } }
+@keyframes hop { 0% { scale: 1.2 .8; } 30% { scale: .9 1.15; translate: 0 -34px; rotate: -12deg; } 60% { translate: 0 -34px; rotate: 348deg; } 85% { scale: 1.15 .85; translate: 0 0; rotate: 360deg; } 100% { scale: 1 1; rotate: 360deg; } }
+
+.chat .working { gap: 12px; }
+.chat .working .pulse { display: none; }
+.ask .bb.peek { position: absolute; width: 58px; height: 58px; left: 18px; top: -46px; z-index: -1; }
+.log { min-height: 0; }
+.carousel .arrow { z-index: 1; }

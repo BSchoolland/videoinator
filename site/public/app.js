@@ -13,6 +13,8 @@ const IDEAS = [
 ];
 const POLL_MS = 2000;
 const LIVE_POLL_MS = 400;
+/** "True story of what's happening rn": one picked at random per visit. */
+const STORIES = ["laws-of-physics"];
 let stop = () => {};
 
 async function api(path, opts = {}) {
@@ -302,8 +304,11 @@ function chatScreen(id) {
 function cooking(id) {
   const s = mount("t-cooking");
   const eta = s.querySelector(".eta"), fill = s.querySelector(".fill");
+  const story = s.querySelector(".story");
+  story.src = `/loops/${STORIES[Math.floor(Math.random() * STORIES.length)]}.mp4`;
+  const stopGlow = glowFrom(story);
   let alive = true;
-  stop = () => { alive = false; };
+  stop = () => { alive = false; stopGlow(); };
   const poll = async () => {
     if (!alive) return;
     const c = await api(`/api/chats/${id}`);

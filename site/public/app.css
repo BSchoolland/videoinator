@@ -163,3 +163,6 @@ h2 { text-shadow: 3px 3px 0 var(--yellow), 6px 6px 0 var(--ink); rotate: -1deg; 
 .ask .bb.peek { position: absolute; width: 58px; height: 58px; left: 18px; top: -46px; z-index: -1; }
 .log { min-height: 0; }
 .carousel .arrow { z-index: 1; }
+
+.story { width: min(440px, 100%); aspect-ratio: 1; object-fit: cover; }
+.story-label { width: min(440px, 100%); }

@@ -1,7 +1,7 @@
 import { benbot } from "./bot.js";
 
 const app = document.getElementById("app");
-const SAMPLES = ["grokbots-x-roadster", "grokbot-hackathon", "ssd-brawl", "v2v-assemble"];
+const SAMPLES = ["grokbots-x-roadster", "grokbot-hackathon", "ssd-brawl"];
 const IDEAS = [
   "me winning a soccer game against Messi",
   "the tesla roadster doing kickflips over things",

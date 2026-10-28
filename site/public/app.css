@@ -55,9 +55,6 @@ h2 { font: 400 clamp(32px, 5.5vw, 60px)/1.05 var(--display); }
 .ask-box { flex: 1; position: relative; display: flex; align-items: center; gap: .35em; min-width: 0; cursor: text; }
 .ask-box .lead { white-space: nowrap; }
 .ask-box input { flex: 1; min-width: 0; border: 0; outline: 0; font: 17px var(--body); background: transparent; padding: 8px 0; }
-.ask-box .field { flex: 1; min-width: 0; position: relative; display: flex; }
-.ask-box .ghost { position: absolute; left: 0; right: 0; top: 50%; translate: 0 -50%; pointer-events: none; color: #8a8a8a; white-space: nowrap; overflow: hidden; }
-.ask-box .ghost::after { content: "▍"; animation: blink 1s steps(1) infinite; margin-left: 1px; color: var(--ink); }
 @keyframes blink { 50% { opacity: 0; } }
 .send { flex: none; width: 46px; height: 46px; border-radius: 50%; border: var(--line); background: var(--paper); font: 700 22px var(--body); cursor: pointer; }
 .send:disabled { opacity: .4; cursor: default; }
@@ -166,16 +163,16 @@ h2 { text-shadow: 3px 3px 0 var(--yellow), 6px 6px 0 var(--ink); rotate: -1deg; 
 
 .story { width: min(440px, 100%); aspect-ratio: 1; object-fit: cover; }
 .story-label { width: min(440px, 100%); }
-/* phones: the lead line sits above a full-width field */
-@media (max-width: 600px) {
-  .ask-box { flex-wrap: wrap; row-gap: 0; }
-  .ask-box .lead { width: 100%; font-size: 15px; color: #444; padding-top: 4px; }
-  .ask-box .field { flex-basis: 100%; }
-}
 
 /* the message box grows with what's typed, so long ideas stay readable */
 .ask-box textarea { flex: 1; min-width: 0; border: 0; outline: 0; font: 17px/1.4 var(--body); background: transparent; padding: 8px 0; resize: none; overflow: hidden; max-height: 40vh; }
-.ask-box .ghost { top: 8px; translate: none; line-height: 1.4; }
 .ask { align-items: flex-end; }
 .ask-box { align-items: flex-start; }
 .ask-box .lead { padding-top: 8px; line-height: 1.4; }
+
+/* the home box reads as one sentence: "Make an epic video of <their idea>", wrapping back to the left edge */
+.ask-box.sentence { display: block; flex: 1; min-width: 0; padding: 8px 0; font: 17px/1.5 var(--body); cursor: text; overflow-wrap: anywhere; }
+.sentence .lead { white-space: normal; padding: 0; color: #555; }
+.sentence .idea { outline: 0; font-weight: 700; color: var(--ink); white-space: pre-wrap; caret-color: var(--pink); }
+.sentence .idea:empty::before { content: attr(data-ghost); font-weight: 400; color: #8a8a8a; }
+.sentence .idea:empty:not(:focus)::after { content: "▍"; animation: blink 1s steps(1) infinite; margin-left: 1px; font-weight: 400; }

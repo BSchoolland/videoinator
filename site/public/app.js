@@ -77,13 +77,12 @@ function glowFrom(v) {
   return () => { clearInterval(timer); c.classList.remove("on"); };
 }
 
-/** Types the ideas into the empty input's placeholder, one after another. */
-function autotype(input, ghost) {
+/** Types the ideas, one after another, as the empty idea field's placeholder (its data-ghost attribute). */
+function autotype(field) {
   let idea = 0, n = 0, dir = 1, timer;
   const tick = () => {
     const s = IDEAS[idea];
-    ghost.hidden = input.value !== "";
-    ghost.textContent = s.slice(0, n);
+    field.dataset.ghost = s.slice(0, n);
     let wait = dir > 0 ? 45 + Math.random() * 50 : 18;
     n += dir;
     if (n > s.length) { dir = -1; wait = 1600; }
@@ -92,6 +91,24 @@ function autotype(input, ghost) {
   };
   tick();
   return () => clearTimeout(timer);
+}
+
+/** The inline idea field: text flows on from "Make an epic video of" and wraps under it like a sentence.
+ *  Enter sends, Shift+Enter is a new line; .value reads and writes its text. */
+function ideaField(el, max) {
+  Object.defineProperty(el, "value", { get: () => el.textContent, set: (v) => { el.textContent = v; } });
+  // an emptied contenteditable keeps a stray <br>, which would hide the placeholder
+  el.addEventListener("input", () => { if (!el.textContent) el.replaceChildren(); if (el.textContent.length > max) el.textContent = el.textContent.slice(0, max); });
+  el.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); el.closest("form").requestSubmit(); } });
+  // a click anywhere in the box puts the caret at the end of the idea
+  el.parentElement.addEventListener("mousedown", (e) => {
+    if (e.target === el) return;
+    e.preventDefault();
+    el.focus();
+    const r = document.createRange(); r.selectNodeContents(el); r.collapse(false);
+    getSelection().removeAllRanges(); getSelection().addRange(r);
+  });
+  return el;
 }
 
 // ---------------------------------------------------------------- screens
@@ -137,19 +154,17 @@ function login() {
 function home(me = {}) {
   const s = mount("t-home");
   const stopGlow = carousel(s.querySelector(".carousel"));
-  const f = s.querySelector("form"), input = f.querySelector("textarea"), err = s.querySelector(".err");
-  const ghost = f.querySelector(".ghost");
-  grow(input);
+  const f = s.querySelector("form"), input = ideaField(f.querySelector(".idea"), 1900), err = s.querySelector(".err");
   // the idea from their access request, ready to send on their first visit
   if (me.idea) {
     input.value = me.idea.replace(/^\s*(make|generate|create)\s+(me\s+)?an?\s+(epic\s+)?video\s+(of|about)\s+/i, "");
     input.dispatchEvent(new Event("input"));
   }
-  const stopTyping = autotype(input, ghost);
+  const stopTyping = autotype(input);
   // BenBot peeks over the bar and watches the words go in
   let bot = null;
   benbot("peek").then((b) => { bot = b; f.prepend(b.el); });
-  const watch = () => bot?.look(Math.min(1, (input.value || ghost.textContent).length / 40) * 1.6 - .6, .5, 600);
+  const watch = () => bot?.look(Math.min(1, (input.value || input.dataset.ghost || "").length / 40) * 1.6 - .6, .5, 600);
   const watching = setInterval(watch, 300);
   input.addEventListener("input", () => { watch(); if (input.value.length === 1) bot?.bounce(); });
   stop = () => { stopGlow(); stopTyping(); clearInterval(watching); bot?.stop(); };

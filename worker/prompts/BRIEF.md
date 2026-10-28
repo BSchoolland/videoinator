@@ -28,7 +28,8 @@ epic tone. Characters drawn from rigs (the Grok Bot crew) stay as they are; the 
 
 If BenBot appears (it often does: the planner is BenBot), it's the official Grok Bot crew, already traced and rigged
 in ~/grok-hype: `bots/*.json` (vector rigs), `mv/bots.py` and `mv/rig.py` (drawing and acting), the official art in
-`assets/official/`. Copy what you need into this project; never redraw them with the image model.
+`assets/official/`. Copy what you need into this project; never redraw them with the image model. Captions and any
+on-screen text call them bots by color ("the teal bot", "the violet bot"), never by shape ("ball", "pill", "square").
 
 ## References
 

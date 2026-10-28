@@ -9,6 +9,13 @@ be funny, look big, and land its payoff.
 
 {PLAN}
 
+## Look
+
+Unless the plan or the chat asks for a different style, every generated image is **anime**: epic, over-the-top
+shonen action anime. Bold confident linework, cel shading, dramatic lighting and rim light, saturated color, speed
+lines, impact frames, huge skies and scale. Never the soft, rounded, pastel "AI kids' storybook" look; it kills the
+epic tone. Characters drawn from rigs (the Grok Bot crew) stay as they are; the anime world goes around them.
+
 ## Delivery
 
 - Square 1080x1080, 30 fps, H.264 + AAC, exactly the length of `assets/song.mp3`.

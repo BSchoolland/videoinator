@@ -6,7 +6,6 @@ on it. Suno runs in Ben's logged-in Chrome, which other videos share, so:
 1. `{TOOLS}/suno-lock take` (it waits if another video is in Suno). Everything in Suno happens between take and drop.
 2. Read ~/Projects/benbot/skills/browse-as-ben/SKILL.md: you drive the browser with
    `node ~/Projects/benbot/services/budget/driver.mjs`, run from ~/Projects/benbot/workspaces/1207975516687171654.
-   Work in your own new tab, and touch nothing else in his browser.
 3. On suno.com/create, write a style prompt for the plan's music vibe (built for this video's story and its payoff;
    instrumental unless the plan clearly wants lyrics, and then short, funny, clean ones you write). Describing the
    shape you'd like (a breakdown, then a drop) is fine, but Suno won't follow it closely. Set the length to 1:30 under

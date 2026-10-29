@@ -9,7 +9,7 @@ import { chatDir, RUNS } from "./planner.ts";
 import { post, upload, SITE, type Chat, type Job, type Message, type User } from "./site.ts";
 
 const here = import.meta.dirname;
-const REEL = path.join(os.homedir(), "Projects/reel");
+const REEL = path.join(here, "../reel");
 const PY = path.join(REEL, ".venv/bin/python");
 const STATS = path.join(RUNS, "stage-minutes.json");
 const MODEL = process.env.DIRECTOR_MODEL ?? "claude-opus-5-5";

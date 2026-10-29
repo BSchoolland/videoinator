@@ -32,9 +32,21 @@ export const requestReport = (r: Request) => `Epic Video-inator access request (
 Their video idea: ${r.idea ? `"${r.idea}"` : "(none given)"}
 Message Ben about it in thread ${THREAD}: who this is if you know them (TEAM/, your memory, the email domain), whether you'd approve, and how many generations you'd give (default 5, all time). He answers there; the session in that thread approves with \`node ~/Projects/videoinator/worker/approve.ts approve ${r.id} <n>\` or \`deny ${r.id}\`.`;
 
+/** Ben's standing approvals: email -> generations (~/.config/videoinator/auto-approve.json), read fresh each time. */
+const AUTO_APPROVE = path.join(os.homedir(), ".config/videoinator/auto-approve.json");
+const autoApproval = (email: string): number | undefined => {
+  if (!fs.existsSync(AUTO_APPROVE)) return undefined;
+  const rules: Record<string, number> = JSON.parse(fs.readFileSync(AUTO_APPROVE, "utf8"));
+  return rules[email.trim().toLowerCase()];
+};
+
 async function announceRequests() {
   for (const r of (await get<Request[]>("/requests")) ?? []) {
-    await tellBenBot(requestReport(r));
+    const n = autoApproval(r.email);
+    if (n) {
+      await post(`/requests/${r.id}/approve`, { credits: n });
+      await tellBenBot(`Epic Video-inator: auto-approved ${r.name} <${r.email}> with ${n} generations (Ben's standing rule); their welcome email is sent. Idea: ${r.idea ? `"${r.idea}"` : "(none)"}. Just let Ben know in thread ${THREAD}.`);
+    } else await tellBenBot(requestReport(r));
     await post(`/requests/${r.id}/announced`, {});
     log("requests", `reported ${r.id} (${r.email}) to BenBot`);
   }

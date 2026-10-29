@@ -173,6 +173,7 @@ export async function makeVideo(j: { job: Job; chat: Chat; messages: Message[]; 
         sh("ffmpeg", ["-v", "error", "-i", path.join(dir, "out/cycle-1-master.mp4"), "-vf",
           "fps=4,scale=360:-2,drawtext=text='%{pts\\:hms}':x=6:y=6:fontsize=18:fontcolor=yellow:box=1:boxcolor=black@0.6,tile=3x3",
           path.join(cold, "sheet_%02d.jpg")], cold);
+        fs.writeFileSync(path.join(cold, "audio.txt"), sh(PY, [path.join(here, "tools/audio-summary.py"), path.join(dir, "out/cycle-1-master.mp4")], cold));
         ran = true;
         const seen = await coldViewer(cold, prompt("COLDVIEW.md", {}), path.join(dir, "coldview-c1.log"), signal);
         if (!seen.includes("## What it")) throw new Error(`the cold viewer gave no review: ${seen.slice(0, 300)}`);

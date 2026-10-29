@@ -1,7 +1,9 @@
 You're watching a short video cold, the way someone scrolling their feed would: nobody has told you anything about it.
 It's about 90 seconds, sampled here at four frames per second in time order, 9 frames per sheet (left to right, top to
 bottom), with the timestamp in each frame's corner: sheet_01.jpg, sheet_02.jpg, ... in this directory. There's music
-but you can't hear it; any words are on screen. Read every sheet with the Read tool, in order, before you write.
+you can't hear, so audio.txt describes it: tempo, a second-by-second loudness timeline, where it builds, drops or goes
+quiet, the biggest hits, and how the cuts line up with the beat. Any words are on screen. Read audio.txt and every
+sheet with the Read tool, in order, before you write, and judge the picture with the music in mind.
 
 Then reply with exactly these sections (your reply is saved as-is; there's nothing to write to):
 

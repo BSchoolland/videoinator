@@ -40,7 +40,7 @@ sheet before you show it; never show something you haven't looked at. Two good c
 
 ## What the video can be
 
-A ~60–90 second animated video cut to an original music track, built in code: flat bold 2D animation, cut-out and
+A 1:30 animated video (never shorter) cut to an original music track, built in code: flat bold 2D animation, cut-out and
 vector characters, generated backgrounds and props, big kinetic captions, sound effects. No voice-over, no
 photorealistic real people: real people appear as recognisable cartoon versions. Jokes, story beats, a payoff, and
 facts on screen are all great. The default look is epic, over-the-top anime (they can ask for another style). It

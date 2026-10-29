@@ -145,7 +145,7 @@ export async function makeVideo(j: { job: Job; chat: Chat; messages: Message[]; 
           N: String(n), DIR: dir,
           CYCLE_NOTE: n === 2 ? "Two reviews of your first cut: coldview-c1.md is a viewer who saw only the frames (no brief, no chat) and says what they think the video is about and where they got lost; critique-c1.md is a blind critic's ranked review. Read both first. If the cold viewer's \"What it's about\" doesn't match the plan in BRIEF.md, or they got lost anywhere, fixing that comes before everything else: the story has to read without the brief. Then fix what the critic ranks highest; structural complaints beat polish."
             : fs.existsSync(path.join(dir, "assets/song.mp3")) ? "" : prompt("MUSIC.md", { TOOLS: path.join(here, "tools") }),
-        }), path.join(dir, `director-c${n}.log`), { effort: EFFORT, signal, env: { REEL_CYCLE: String(n), PATH: `${path.dirname(PY)}:${process.env.PATH}` } });
+        }), path.join(dir, `director-c${n}.log`), { effort: EFFORT, signal, env: { PATH: `${path.dirname(PY)}:${process.env.PATH}` } });
         broken();
       }
       if (!fs.existsSync(marker)) throw new Error(`the cycle ${n} director exited twice without a render`);

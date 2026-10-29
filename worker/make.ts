@@ -122,7 +122,7 @@ export async function makeVideo(j: { job: Job; chat: Chat; messages: Message[]; 
   // an edit starts from a copy of the version it changes, minus that version's own edit outputs
   if (editing && !fs.existsSync(dir)) {
     fs.cpSync(parentDir, dir, { recursive: true });
-    for (const f of ["edit.rendered", "out/edit-master.mp4", "out/edit-share.mp4", "BROKEN.md"]) fs.rmSync(path.join(dir, f), { force: true });
+    for (const f of ["edit.rendered", "out/edit-master.mp4", "out/edit-share.mp4", "out/poster.jpg", "BROKEN.md"]) fs.rmSync(path.join(dir, f), { force: true });
   }
   for (const d of ["assets", "work", "out", "art"]) fs.mkdirSync(path.join(dir, d), { recursive: true });
   const STAGES = editing ? EDIT_STAGES : MAKE_STAGES;

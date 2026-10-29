@@ -381,17 +381,39 @@ function done(c) {
   const v = s.querySelector("video");
   v.src = c.job.video;
   withSound(v);
+  const b = s.querySelector("[data-share]");
+  b.onclick = async () => {
+    if (navigator.share) {
+      // cancelling the share sheet rejects with AbortError; anything else is a real failure
+      await navigator.share({ url: c.job.share }).catch((e) => { if (e.name !== "AbortError") console.error(e); });
+      return;
+    }
+    await navigator.clipboard.writeText(c.job.share);
+    b.textContent = "Link copied!";
+    setTimeout(() => { b.textContent = "Share it"; }, 2000);
+  };
 }
 
 // ---------------------------------------------------------------- routing
 async function route() {
   let meData;
   try { meData = await api("/api/me"); }
-  catch (x) { if (x.status === 401) return gate(); throw x; }
+  catch (x) {
+    if (x.status !== 401) throw x;
+    const m = /^#chat\/(\w+)$/.exec(location.hash);
+    const sh = m && await api(`/api/chats/${m[1]}/share`).catch(() => null);
+    if (sh) { location.replace(sh.share); return; }
+    return gate();
+  }
   const m = /^#chat\/(\w+)$/.exec(location.hash);
   if (!m) return home(meData);
   const c = await api(`/api/chats/${m[1]}`).catch((x) => { if (x.status === 404) return null; throw x; });
-  if (!c) { location.hash = ""; return home(); }
+  if (!c) {
+    // someone else's chat: their finished video's public page, if there is one
+    const sh = await api(`/api/chats/${m[1]}/share`).catch(() => null);
+    if (sh) { location.replace(sh.share); return; }
+    location.hash = ""; return home();
+  }
   if (c.status === "done") return done(c);
   if (c.status === "queued" || c.status === "cooking") return cooking(c.id);
   chatScreen(c.id);

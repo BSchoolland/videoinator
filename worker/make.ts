@@ -187,7 +187,12 @@ export async function makeVideo(j: { job: Job; chat: Chat; messages: Message[]; 
     const share = path.join(dir, "out/cycle-2-share.mp4");
     if (!fs.existsSync(share)) { sh(PY, ["-m", "reel.deliver", path.join(dir, "out/cycle-2-master.mp4"), share], dir); ran = true; }
     if (ran) record("deliver", (Date.now() - stageStart) / 60000);
-    const r = await upload<{ video: string }>(`/jobs/${job.id}/done`, share);
+    // the still a shared link previews with: a frame 40% in, past the opening title
+    const posterFile = path.join(dir, "out/poster.jpg");
+    const dur = Number(sh("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", share], dir));
+    sh("ffmpeg", ["-v", "error", "-y", "-ss", String(dur * 0.4), "-i", share, "-frames:v", "1", "-q:v", "3", posterFile], dir);
+    const { url: posterUrl } = await upload<{ url: string }>("/media?ext=jpg", posterFile);
+    const r = await upload<{ video: string }>(`/jobs/${job.id}/done?poster=${path.basename(posterUrl)}`, share);
     log(`DONE ${SITE}${r.video}`);
   } finally {
     clearInterval(heartbeat);

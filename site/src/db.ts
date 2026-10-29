@@ -40,6 +40,8 @@ const addColumn = (table: string, col: string) => {
 for (const col of ["steps TEXT NOT NULL DEFAULT '[]'", "draft TEXT NOT NULL DEFAULT ''"]) addColumn("chats", col);
 // the idea they gave when asking for access, waiting in the box on their first visit
 addColumn("users", "idea TEXT NOT NULL DEFAULT ''");
+// the still a shared video's link previews with
+addColumn("jobs", "poster TEXT");
 db.exec(`UPDATE users SET idea = COALESCE((SELECT r.idea FROM requests r WHERE lower(r.email) = lower(users.email)
   AND r.status = 'approved' AND r.idea != '' ORDER BY r.created_at DESC LIMIT 1), '') WHERE idea = ''`);
 
@@ -54,7 +56,7 @@ export interface Request { id: string; name: string; email: string; idea: string
 export interface User { id: string; name: string; email: string; token: string; credits: number; used: number; idea: string }
 export interface Chat { id: string; user_id: string; status: ChatStatus; claimed_at: number | null; claimed_upto: number | null; session_id: string | null; created_at: number; steps: string; draft: string }
 export interface Message { id: number; chat_id: string; sender: "user" | "bot"; kind: "text" | "media" | "plan"; body: string; media: Media[]; created_at: number }
-export interface Job { id: string; chat_id: string; plan_msg_id: number; status: string; stage: string; pct: number; eta_at: number | null; claimed_at: number | null; heartbeat_at: number | null; attempts: number; video: string | null; error: string | null; created_at: number; finished_at: number | null }
+export interface Job { id: string; chat_id: string; plan_msg_id: number; status: string; stage: string; pct: number; eta_at: number | null; claimed_at: number | null; heartbeat_at: number | null; attempts: number; video: string | null; poster: string | null; error: string | null; created_at: number; finished_at: number | null }
 
 const one = <T>(sql: string, ...p: any[]) => (db.query(sql).get(...p) as T | null) ?? null;
 const all = <T>(sql: string, ...p: any[]) => db.query(sql).all(...p) as T[];
@@ -224,10 +226,10 @@ export function progress(id: string, stage: string, pct: number, etaAt: number |
   run("UPDATE jobs SET stage = ?, pct = ?, eta_at = ?, heartbeat_at = ? WHERE id = ?", stage, pct, etaAt, now(), id);
 }
 
-export function finishJob(id: string, video: string) {
+export function finishJob(id: string, video: string, poster: string | null) {
   db.transaction(() => {
     const j = job(id)!;
-    run("UPDATE jobs SET status = 'done', video = ?, pct = 1, finished_at = ? WHERE id = ?", video, now(), id);
+    run("UPDATE jobs SET status = 'done', video = ?, poster = ?, pct = 1, finished_at = ? WHERE id = ?", video, poster, now(), id);
     run("UPDATE chats SET status = 'done' WHERE id = ?", j.chat_id);
   })();
 }
@@ -240,4 +242,14 @@ export function failJob(id: string, error: string) {
     run("UPDATE chats SET status = 'failed' WHERE id = ?", j.chat_id);
     run("UPDATE users SET used = used - 1 WHERE id = (SELECT user_id FROM chats WHERE id = ?)", j.chat_id);
   })();
+}
+
+export const setPoster = (id: string, poster: string) => run("UPDATE jobs SET poster = ? WHERE id = ?", poster, id);
+/** A finished video's public page: the title is the plan's first line. */
+export function shared(jobId: string): { video: string; poster: string | null; title: string } | null {
+  const j = job(jobId);
+  if (!j || j.status !== "done" || !j.video) return null;
+  const plan = message(j.plan_msg_id);
+  const title = (plan?.body.split("\n").find((l) => l.trim()) ?? "An epic video").replace(/^[#*\s]+|[*\s]+$/g, "").slice(0, 90);
+  return { video: j.video, poster: j.poster, title };
 }

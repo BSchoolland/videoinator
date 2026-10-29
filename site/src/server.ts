@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { join, extname, normalize } from "node:path";
-import { DEFAULT_CREDITS, DEV, MEDIA_DIR, PORT, WORKER_TOKEN } from "./config.ts";
+import { DEFAULT_CREDITS, DEV, MEDIA_DIR, PORT, WORKER_TOKEN, url } from "./config.ts";
 import * as D from "./db.ts";
 import * as E from "./emails.ts";
 import { announceMailMode } from "./mail.ts";
@@ -73,7 +73,7 @@ const chatView = (c: D.Chat, after = 0) => {
   return {
     id: c.id, status: c.status, messages: D.messages(c.id, after),
     live: c.status === "thinking" ? { steps: JSON.parse(c.steps), draft: c.draft } : null,
-    job: j && { status: j.status, stage: j.stage, pct: j.pct, eta_at: j.eta_at, video: j.video && `/media/${j.video}`, plan_msg_id: j.plan_msg_id },
+    job: j && { status: j.status, stage: j.stage, pct: j.pct, eta_at: j.eta_at, video: j.video && `/media/${j.video}`, share: j.status === "done" ? url(`/v/${j.id}`) : null, plan_msg_id: j.plan_msg_id },
   };
 };
 
@@ -93,14 +93,49 @@ const route = (method: string, pattern: string, h: Handler) =>
 // ---------------------------------------------------------------- pages
 route("GET", "/healthz", () => new Response("ok"));
 route("GET", "/in/:token", (req, p) => {
-  if (!D.userByToken(p.token)) return Response.redirect("/", 303);
+  const owner = D.userByToken(p.token);
+  if (!owner) return Response.redirect("/", 303);
   const chat = new URL(req.url).searchParams.get("chat");
+  // someone already signed in as somebody else opened a forwarded link: show them the video, don't switch accounts
+  const current = cookie(req, "vi");
+  if (current && current !== p.token && D.userByToken(current)) {
+    const j = chat ? D.jobOf(chat) : null;
+    return Response.redirect(j && D.shared(j.id) ? `/v/${j.id}` : "/", 303);
+  }
   return new Response(null, {
     status: 303,
     headers: { location: chat ? `/#chat/${chat}` : "/", "set-cookie": `vi=${p.token}; Path=/; Max-Age=31536000; HttpOnly; SameSite=Lax${DEV ? "" : "; Secure"}` },
   });
 });
 route("GET", "/media/:file", (req, p) => file(under(MEDIA_DIR, p.file), req));
+
+// a finished video anyone can open: plays in the page and in Discord/iMessage/Slack link previews
+const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+route("GET", "/v/:id", (_req, p) => {
+  const v = D.shared(p.id);
+  if (!v) return new Response("not found", { status: 404 });
+  const page = url(`/v/${p.id}`), mp4 = url(`/media/${v.video}`), img = v.poster ? url(`/media/${v.poster}`) : url("/og.jpg");
+  const t = esc(v.title);
+  return new Response(`<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${t} · Epic Video-inator</title>
+<meta name="theme-color" content="#ff7ac6">
+<link rel="icon" href="/benbot.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta property="og:type" content="video.other"><meta property="og:site_name" content="Epic Video-inator">
+<meta property="og:url" content="${page}"><meta property="og:title" content="${t}">
+<meta property="og:description" content="Made with the Epic Video-inator, the power of BenBot SI.">
+<meta property="og:image" content="${img}"><meta property="og:image:width" content="1080"><meta property="og:image:height" content="1080">
+<meta property="og:video" content="${mp4}"><meta property="og:video:secure_url" content="${mp4}"><meta property="og:video:type" content="video/mp4">
+<meta property="og:video:width" content="1080"><meta property="og:video:height" content="1080">
+<meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="${t}"><meta name="twitter:image" content="${img}">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bungee&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/app.css"></head><body><main id="app"><section class="screen center shared">
+<h2>${t}</h2>
+<video class="final" src="${mp4}" poster="${img}" controls playsinline></video>
+<a class="btn go" href="/">Make your own epic video</a>
+</section></main></body></html>`, { headers: { "content-type": "text/html; charset=utf-8" } });
+});
 route("GET", "/api/stories", () => json({
   stories: readdirSync(join(PUBLIC, "loops")).filter((f) => f.endsWith(".mp4") && f !== "transition.mp4").sort(),
 }));
@@ -144,6 +179,13 @@ route("POST", "/api/chats", async (req) => {
 route("GET", "/api/chats/:id", (req, p) => {
   const { c } = myChat(req, p.id);
   return json(chatView(c, Number(new URL(req.url).searchParams.get("after") ?? 0)));
+});
+
+// the public version of a chat's finished video, for links into chats that aren't yours
+route("GET", "/api/chats/:id/share", (_req, p) => {
+  const j = D.jobOf(p.id);
+  if (!j || !D.shared(j.id)) throw new HttpError(404, "no shared video");
+  return json({ share: `/v/${j.id}` });
 });
 
 route("POST", "/api/chats/:id/messages", async (req, p) => {
@@ -241,10 +283,18 @@ route("POST", "/api/worker/jobs/:id/done", async (req, p) => {
   if (!j || j.status !== "running") throw new HttpError(409, `job ${p.id} is not running`);
   const name = `${D.newId(10)}.mp4`;
   writeFileSync(join(MEDIA_DIR, name), new Uint8Array(await req.arrayBuffer()));
-  D.finishJob(p.id, name);
+  const poster = new URL(req.url).searchParams.get("poster");
+  D.finishJob(p.id, name, poster && /^[0-9a-f]+\.jpg$/.test(poster) ? poster : null);
   const c = D.chat(j.chat_id)!;
-  await E.videoReady(D.userById(c.user_id)!, c.id);
+  await E.videoReady(D.userById(c.user_id)!, c.id, j.id);
   return json({ ok: true, video: `/media/${name}` });
+});
+route("POST", "/api/worker/jobs/:id/poster", async (req, p) => {
+  worker(req);
+  const poster = str((await body(req)).poster, "poster", 40);
+  if (!/^[0-9a-f]+\.jpg$/.test(poster) || !D.job(p.id)) throw bad("poster must be a media .jpg name of an existing job");
+  D.setPoster(p.id, poster);
+  return json({ ok: true });
 });
 route("POST", "/api/worker/jobs/:id/fail", async (req, p) => {
   worker(req);

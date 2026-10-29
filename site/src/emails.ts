@@ -50,7 +50,7 @@ BenBot
   });
 }
 
-export async function videoReady(u: User, chatId: string) {
+export async function videoReady(u: User, chatId: string, jobId: string) {
   await sendMail({
     to: u.email,
     subject: "Your epic video is done cooking",
@@ -58,6 +58,9 @@ export async function videoReady(u: User, chatId: string) {
 
 It's done, and it's hype. Watch it here:
 ${url(`/in/${u.token}?chat=${chatId}`)}
+
+Share it with anyone (this link doesn't sign them in as you):
+${url(`/v/${jobId}`)}
 
 BenBot
 `,

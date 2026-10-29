@@ -173,6 +173,8 @@ export async function makeVideo(j: { job: Job; chat: Chat; messages: Message[]; 
         sh("ffmpeg", ["-v", "error", "-i", path.join(dir, "out/cycle-1-master.mp4"), "-vf",
           "fps=4,scale=360:-2,drawtext=text='%{pts\\:hms}':x=6:y=6:fontsize=18:fontcolor=yellow:box=1:boxcolor=black@0.6,tile=3x3",
           path.join(cold, "sheet_%02d.jpg")], cold);
+        // the standing reference: a video viewers really liked, in the same format (see worker/prompts/COLDVIEW.md)
+        fs.cpSync(path.join(RUNS, "coldview-ref"), path.join(cold, "ref"), { recursive: true });
         fs.writeFileSync(path.join(cold, "audio.txt"), sh(PY, [path.join(here, "tools/audio-summary.py"), path.join(dir, "out/cycle-1-master.mp4")], cold));
         ran = true;
         const seen = await coldViewer(cold, prompt("COLDVIEW.md", {}), path.join(dir, "coldview-c1.log"), signal);

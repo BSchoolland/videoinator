@@ -53,6 +53,19 @@ function agent(dir: string, text: string, logFile: string, opts: { effort: strin
   });
 }
 
+/** The cold viewer: may only Read (its frames) and write its one file, from a directory with nothing else in it. */
+function coldViewer(cwd: string, text: string, logFile: string, signal: AbortSignal): Promise<number> {
+  const args = ["-p", "--model", MODEL, "--effort", "high", "--tools", "Read,Write", "--allowedTools", "Read", "Write(coldview.md)",
+    "--permission-mode", "dontAsk", "--output-format", "stream-json", "--verbose"];
+  return new Promise((resolve, reject) => {
+    const out = fs.openSync(logFile, "a");
+    const child = spawn("claude", args, { cwd, stdio: ["pipe", out, out], signal });
+    child.on("error", (e) => { fs.closeSync(out); reject(e); });
+    child.on("close", (code) => { fs.closeSync(out); resolve(code ?? -1); });
+    child.stdin!.end(text);
+  });
+}
+
 function sh(cmd: string, args: string[], cwd: string) {
   const r = spawnSync(cmd, args, { cwd, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
   if (r.status !== 0) throw new Error(`${cmd} ${args.join(" ")} exited ${r.status}: ${(r.stderr || r.stdout).trim().slice(-600)}`);
@@ -120,7 +133,7 @@ export async function makeVideo(j: { job: Job; chat: Chat; messages: Message[]; 
         ran = true;
         await agent(dir, prompt("DIRECTOR.md", {
           N: String(n), DIR: dir,
-          CYCLE_NOTE: n === 2 ? "A blind critic reviewed your first cut: read critique-c1.md first and fix what it ranks highest. Structural complaints beat polish."
+          CYCLE_NOTE: n === 2 ? "Two reviews of your first cut: coldview-c1.md is a viewer who saw only the frames (no brief, no chat) and says what they think the video is about and where they got lost; critique-c1.md is a blind critic's ranked review. Read both first. If the cold viewer's \"What it's about\" doesn't match the plan in BRIEF.md, or they got lost anywhere, fixing that comes before everything else: the story has to read without the brief. Then fix what the critic ranks highest; structural complaints beat polish."
             : fs.existsSync(path.join(dir, "assets/song.mp3")) ? "" : prompt("MUSIC.md", { TOOLS: path.join(here, "tools") }),
         }), path.join(dir, `director-c${n}.log`), { effort: EFFORT, signal, env: { REEL_CYCLE: String(n), REEL_ART_CAP: "40", PATH: `${path.dirname(PY)}:${process.env.PATH}` } });
         broken();
@@ -139,6 +152,21 @@ export async function makeVideo(j: { job: Job; chat: Chat; messages: Message[]; 
         ran = true;
         await agent(dir, text, path.join(dir, "critic-c1.log"), { effort: EFFORT, signal, env: { PATH: `${path.dirname(PY)}:${process.env.PATH}` } });
         if (!fs.existsSync(critique) || !fs.statSync(critique).size) throw new Error("the critic wrote no critique");
+      }
+      // a cold viewer: only the frames, no brief, no chat, no code, nowhere near the project, says what it thinks the
+      // video is about and where it got lost
+      const coldview = path.join(dir, "coldview-c1.md");
+      if (!fs.existsSync(coldview) || !fs.statSync(coldview).size) {
+        const cold = path.join(os.tmpdir(), `videoinator-coldview-${job.id}`);
+        fs.rmSync(cold, { recursive: true, force: true });
+        fs.mkdirSync(cold, { recursive: true });
+        sh("ffmpeg", ["-v", "error", "-i", path.join(dir, "out/cycle-1-master.mp4"), "-vf",
+          "fps=1,scale=360:-2,drawtext=text='%{pts\\:hms}':x=6:y=6:fontsize=18:fontcolor=yellow:box=1:boxcolor=black@0.6,tile=3x3",
+          path.join(cold, "sheet_%02d.jpg")], cold);
+        ran = true;
+        await coldViewer(cold, prompt("COLDVIEW.md", { OUT: "coldview.md" }), path.join(dir, "coldview-c1.log"), signal);
+        if (!fs.existsSync(path.join(cold, "coldview.md"))) throw new Error("the cold viewer wrote nothing");
+        fs.copyFileSync(path.join(cold, "coldview.md"), coldview);
       }
     }
 

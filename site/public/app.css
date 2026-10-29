@@ -176,3 +176,16 @@ h2 { text-shadow: 3px 3px 0 var(--yellow), 6px 6px 0 var(--ink); rotate: -1deg; 
 .sentence .idea { outline: 0; font-weight: 700; color: var(--ink); white-space: pre-wrap; caret-color: var(--pink); }
 .sentence .idea:empty::before { content: attr(data-ghost); font-weight: 400; color: #8a8a8a; }
 .sentence .idea:empty:not(:focus)::after { content: "▍"; animation: blink 1s steps(1) infinite; margin-left: 1px; font-weight: 400; }
+
+/* rating a finished video */
+.rate { display: flex; flex-direction: column; align-items: center; gap: 10px; width: min(520px, 100%); margin-top: 10px; }
+.rate-q { font: 400 22px var(--display); }
+.stars { display: flex; gap: 4px; }
+.star { background: none; border: 0; cursor: pointer; font-size: 44px; line-height: 1; color: transparent; -webkit-text-stroke: 2.5px var(--ink); transition: scale .12s, rotate .12s; padding: 2px; }
+.star.on { color: var(--yellow); text-shadow: 3px 3px 0 var(--ink); }
+.star:hover { scale: 1.15; rotate: -8deg; }
+.rate-more { display: flex; flex-direction: column; gap: 10px; width: 100%; align-items: center; }
+.rate-more[hidden], .rate-done[hidden] { display: none; }
+.rate-more textarea { width: 100%; font: 17px var(--body); border: 2px solid var(--ink); border-radius: 12px; padding: 12px 14px; box-shadow: 3px 3px 0 var(--ink); resize: vertical; }
+.rate-more textarea:focus { outline: 0; box-shadow: 3px 3px 0 var(--pink); }
+.rate-done { color: #555; }

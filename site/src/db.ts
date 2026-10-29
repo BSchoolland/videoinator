@@ -31,6 +31,11 @@ CREATE TABLE IF NOT EXISTS jobs (
   video TEXT, error TEXT, created_at INTEGER NOT NULL, finished_at INTEGER
 );
 CREATE INDEX IF NOT EXISTS messages_chat ON messages(chat_id, id);
+CREATE TABLE IF NOT EXISTS ratings (
+  job_id TEXT NOT NULL REFERENCES jobs(id), voter TEXT NOT NULL, owner INTEGER NOT NULL, stars INTEGER NOT NULL,
+  text TEXT NOT NULL DEFAULT '', announced INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL,
+  PRIMARY KEY (job_id, voter)
+);
 `);
 // live: what the planner is doing right now and the bubble it's mid-way through writing, while it's thinking
 const addColumn = (table: string, col: string) => {
@@ -253,3 +258,17 @@ export function shared(jobId: string): { video: string; poster: string | null; t
   const title = (plan?.body.split("\n").find((l) => l.trim()) ?? "An epic video").replace(/^[#*\s]+|[*\s]+$/g, "").slice(0, 90);
   return { video: j.video, poster: j.poster, title };
 }
+
+// ---------------------------------------------------------------- ratings
+/** voter: "u:<user id>" when signed in, else "v:<browser cookie>"; owner: the voter made the video. */
+export interface Rating { job_id: string; voter: string; owner: number; stars: number; text: string; created_at: number }
+export function rate(jobId: string, voter: string, owner: boolean, stars: number, text: string) {
+  run(`INSERT INTO ratings (job_id, voter, owner, stars, text, created_at) VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT (job_id, voter) DO UPDATE SET stars = excluded.stars, text = excluded.text, announced = 0, created_at = excluded.created_at`,
+    jobId, voter, owner ? 1 : 0, stars, text, now());
+}
+export const ratingBy = (jobId: string, voter: string) =>
+  one<Rating>("SELECT * FROM ratings WHERE job_id = ? AND voter = ?", jobId, voter);
+export const unannouncedRatings = () => all<Rating>("SELECT * FROM ratings WHERE announced = 0 ORDER BY created_at");
+export const markRatingAnnounced = (jobId: string, voter: string, at: number) =>
+  run("UPDATE ratings SET announced = 1 WHERE job_id = ? AND voter = ? AND created_at = ?", jobId, voter, at);

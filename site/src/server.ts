@@ -73,16 +73,16 @@ const chatView = (c: D.Chat, after = 0) => {
   return {
     id: c.id, status: c.status, messages: D.messages(c.id, after),
     live: c.status === "thinking" ? { steps: JSON.parse(c.steps), draft: c.draft } : null,
-    job: j && { status: j.status, stage: j.stage, pct: j.pct, eta_at: j.eta_at, video: j.video && `/media/${j.video}`, share: j.status === "done" ? url(`/v/${j.id}`) : null, plan_msg_id: j.plan_msg_id },
+    job: j && { id: j.id, status: j.status, stage: j.stage, pct: j.pct, eta_at: j.eta_at, video: j.video && `/media/${j.video}`, share: j.status === "done" ? url(`/v/${j.id}`) : null, plan_msg_id: j.plan_msg_id },
   };
 };
 
-const recentRequests = new Map<string, number[]>();
-function rateLimit(ip: string) {
-  const t = Date.now();
-  const hits = (recentRequests.get(ip) ?? []).filter((x) => t - x < 3600_000);
-  if (hits.length >= 5) throw new HttpError(429, "slow down");
-  recentRequests.set(ip, [...hits, t]);
+const recentHits = new Map<string, number[]>();
+function rateLimit(ip: string, bucket = "access", perHour = 5) {
+  const t = Date.now(), k = `${bucket} ${ip}`;
+  const hits = (recentHits.get(k) ?? []).filter((x) => t - x < 3600_000);
+  if (hits.length >= perHour) throw new HttpError(429, "slow down");
+  recentHits.set(k, [...hits, t]);
 }
 
 type Handler = (req: Request, p: Record<string, string>, ip: string) => Promise<Response> | Response;
@@ -136,8 +136,9 @@ route("GET", "/v/:id", (_req, p) => {
 <link rel="stylesheet" href="/app.css"></head><body><main id="app"><section class="screen center shared">
 <h2>${t}</h2>
 <video class="final" src="${mp4}" poster="${img}" controls playsinline></video>
+<div class="rate" data-job="${p.id}"></div>
 <a class="btn go" href="/">Make your own epic video</a>
-</section></main></body></html>`, { headers: { "content-type": "text/html; charset=utf-8" } });
+</section><script type="module">import { mountRating } from "/rate.js"; mountRating(document.querySelector(".rate")).catch(console.error);</script></main></body></html>`, { headers: { "content-type": "text/html; charset=utf-8" } });
 });
 // the bare player Slack and X frame in their link previews
 route("GET", "/embed/:id", (_req, p) => {
@@ -159,6 +160,33 @@ route("GET", "/oembed", (req) => {
     width: 1080, height: 1080,
     html: `<iframe src="${url(`/embed/${id}`)}" width="1080" height="1080" frameborder="0" allow="autoplay; fullscreen" allowfullscreen></iframe>`,
   });
+});
+// stars and an optional comment on a finished video, from its maker or anyone it was shared with
+function voter(req: Request, jobId: string): { id: string; owner: boolean; setCookie?: string } {
+  const t = cookie(req, "vi"), u = t ? D.userByToken(t) : null;
+  if (u) {
+    const j = D.job(jobId);
+    return { id: `u:${u.id}`, owner: !!j && D.chat(j.chat_id)?.user_id === u.id };
+  }
+  const v = cookie(req, "rv");
+  if (v && /^[0-9a-f]{16}$/.test(v)) return { id: `v:${v}`, owner: false };
+  const fresh = D.newId();
+  return { id: `v:${fresh}`, owner: false, setCookie: `rv=${fresh}; Path=/; Max-Age=31536000; HttpOnly; SameSite=Lax${DEV ? "" : "; Secure"}` };
+}
+route("GET", "/api/rate/:job", (req, p) => {
+  if (!D.shared(p.job)) throw new HttpError(404, "no such video");
+  const r = D.ratingBy(p.job, voter(req, p.job).id);
+  return json(r && { stars: r.stars, text: r.text });
+});
+route("POST", "/api/rate/:job", async (req, p, ip) => {
+  if (!D.shared(p.job)) throw new HttpError(404, "no such video");
+  rateLimit(ip, "rate", 60);
+  const b = await body(req);
+  const stars = Number(b.stars);
+  if (!Number.isInteger(stars) || stars < 1 || stars > 5) throw bad("stars must be 1 to 5");
+  const v = voter(req, p.job);
+  D.rate(p.job, v.id, v.owner, stars, str(b.text, "feedback", 1000, false));
+  return Response.json({ ok: true }, { headers: v.setCookie ? { "set-cookie": v.setCookie } : {} });
 });
 route("GET", "/api/stories", () => json({
   stories: readdirSync(join(PUBLIC, "loops")).filter((f) => f.endsWith(".mp4") && f !== "transition.mp4").sort(),
@@ -238,6 +266,17 @@ route("POST", "/api/worker/requests/:id/approve", async (req, p) => {
   await E.welcome(u);
   return json({ ok: true, user: { id: u.id, email: u.email, credits: u.credits, used: u.used } });
 });
+route("GET", "/api/worker/ratings/new", (req) => {
+  worker(req);
+  return json(D.unannouncedRatings().map((r) => ({ ...r, title: D.shared(r.job_id)?.title ?? "", maker: makerOf(r.job_id) })));
+});
+route("POST", "/api/worker/ratings/announced", async (req) => {
+  worker(req);
+  const b = await body(req);
+  D.markRatingAnnounced(str(b.job, "job", 40), str(b.voter, "voter", 40), Number(b.at));
+  return json({ ok: true });
+});
+const makerOf = (jobId: string) => { const j = D.job(jobId), c = j && D.chat(j.chat_id); return (c && D.userById(c.user_id)?.name) ?? "?"; };
 route("POST", "/api/worker/requests/:id/deny", (req, p) => { worker(req); D.deny(p.id); return json({ ok: true }); });
 route("POST", "/api/worker/users/:id/credits", async (req, p) => {
   worker(req);

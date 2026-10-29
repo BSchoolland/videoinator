@@ -1,4 +1,5 @@
 import { benbot } from "./bot.js";
+import { mountRating } from "./rate.js";
 
 const app = document.getElementById("app");
 const SAMPLES = ["grokbots-x-roadster", "grokbot-hackathon", "ssd-brawl"];
@@ -392,6 +393,9 @@ function done(c) {
     b.textContent = "Link copied!";
     setTimeout(() => { b.textContent = "Share it"; }, 2000);
   };
+  const r = s.querySelector(".rate");
+  r.dataset.job = c.job.id;
+  mountRating(r).catch(console.error);
 }
 
 // ---------------------------------------------------------------- routing

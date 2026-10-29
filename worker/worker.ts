@@ -52,6 +52,17 @@ async function announceRequests() {
   }
 }
 
+// ---------------------------------------------------------------- ratings
+interface NewRating { job_id: string; voter: string; owner: number; stars: number; text: string; created_at: number; title: string; maker: string }
+async function announceRatings() {
+  for (const r of (await get<NewRating[]>("/ratings/new")) ?? []) {
+    const who = r.owner ? `${r.maker} (who made it)` : `a viewer (made by ${r.maker})`;
+    await tellBenBot(`Epic Video-inator rating: "${r.title}" (job ${r.job_id}) got ${r.stars}/5 stars from ${who}. ${r.text ? `Feedback: "${r.text}"` : "No comment."} Tell Ben in thread ${THREAD}.`);
+    await post("/ratings/announced", { job: r.job_id, voter: r.voter, at: r.created_at });
+    log("ratings", `reported ${r.stars}★ on ${r.job_id}`);
+  }
+}
+
 // ---------------------------------------------------------------- planner turns
 let turns = 0;
 async function nextTurn() {
@@ -98,7 +109,7 @@ log("worker", `polling ${SITE}: ${TURN_SLOTS} planner slots, ${JOB_SLOTS} video 
 let lastRequests = 0;
 for (;;) {
   try {
-    if (ANNOUNCE && Date.now() - lastRequests > 15_000) { lastRequests = Date.now(); await announceRequests(); }
+    if (ANNOUNCE && Date.now() - lastRequests > 15_000) { lastRequests = Date.now(); await announceRequests(); await announceRatings(); }
     while (turns < TURN_SLOTS && (await nextTurn()));
     while (making < JOB_SLOTS && (await nextJob()));
   } catch (e) {

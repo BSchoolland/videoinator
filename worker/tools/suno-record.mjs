@@ -68,4 +68,19 @@ for (const pair of pairs) {
   }
 }
 await browser.close(); // over CDP this only disconnects; Ben's Chrome stays up
+
+// the grading every take in OUTDIR gets, earlier rounds included; it's here, not in the music prompt, so it shapes
+// which take wins without shaping what's asked of Suno
+const takes = fs.readdirSync(out).filter((f) => f.endsWith(".mp3") && f !== "song.mp3").sort().map((f) => path.join(out, f));
+if (takes.length) {
+  const py = path.join(path.dirname(fs.realpathSync(process.argv[1])), "../../reel/.venv/bin/python");
+  const stats = execFileSync(py, [path.join(path.dirname(fs.realpathSync(process.argv[1])), "pitch.py"), ...takes], { encoding: "utf8" });
+  console.log(`
+How to grade these takes (pitch center of each one's tonal part):
+${stats}
+Ben's ear runs on this: deeper songs win. Every song he's liked averages 1,500 Hz or lower (his favorite, 1,240); the
+ones he called flops average 1,520-1,660. Rule out any take averaging above 1,500 Hz unless they all do. Among the
+rest, a lower average and a wide swing (a low bed the climaxes rise out of) beat a flat one; then a clean final hit
+and room for drops.`);
+}
 process.exit(failed ? 1 : 0);

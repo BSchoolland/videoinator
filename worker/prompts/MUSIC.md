@@ -9,12 +9,13 @@ on it. Suno runs in Ben's logged-in Chrome, which other videos share, so:
 3. On suno.com/create, write a style prompt for the plan's music vibe, starting with "Epic, hype" (built for this video's story and its payoff;
    instrumental unless the plan clearly wants lyrics, and then short, funny, clean ones you write). Describing the
    shape you'd like (a breakdown, then a drop) is fine, but Suno won't follow it closely. Set the length to 1:30 under
-   Advanced. Create it; Suno makes two takes.
-4. When both are done, record them: `{TOOLS}/suno-record assets/music a:<clip id> b:<clip id>` (the id is the uuid in
-   suno.com/song/<id>). It plays each in Chrome and records it, in real time.
+   Advanced. Create it twice (the same prompt both times): Suno makes two takes each time, so four.
+4. When all four are done, record them: `{TOOLS}/suno-record assets/music a:<clip id> b:<clip id> c:<clip id>
+   d:<clip id>` (the id is the uuid in suno.com/song/<id>). It plays each in Chrome and records it, in real time, then
+   prints how to grade them.
 5. `{TOOLS}/suno-lock drop`.
-6. Pick the take that sounds the most awesome, not the one closest to your plan, and don't make more takes chasing a
-   shape. `python {TOOLS}/audio-summary.py assets/music/<x>.mp3` describes each one for you. Copy the pick to
+6. Pick the best take by the grading suno-record printed, not the one closest to your plan, and don't make more takes
+   chasing a shape. `python {TOOLS}/audio-summary.py assets/music/<x>.mp3` describes each one for you. Copy the pick to
    assets/song.mp3, run `python -m reel.music` (work/audio.json: onsets and the beat grid), and plan the video around
    the song as it really is: its own builds, hits and quiet stretches are where the story's moments land. Note the clip
    ids, the style prompt and your pick in STATE.md.

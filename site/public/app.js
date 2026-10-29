@@ -212,17 +212,19 @@ function bubble(m, chat, onGenerate) {
     }
     el.append(clips);
     if (m.body) el.append(Object.assign(document.createElement("div"), { textContent: m.body }));
-  } else if (m.kind === "plan") {
+  } else if (m.kind === "plan" || m.kind === "edit") {
     el.append(Object.assign(document.createElement("div"), { textContent: m.body }));
-    const b = Object.assign(document.createElement("button"), { className: "btn go", textContent: "Generate Video" });
+    const b = Object.assign(document.createElement("button"), { className: "btn go", textContent: m.kind === "plan" ? "Generate Video" : "Make these edits" });
     b.dataset.plan = m.id;
+    b.dataset.kind = m.kind;
     b.onclick = () => onGenerate(m.id, b);
     el.append(b);
   } else el.textContent = m.body;
   return el;
 }
 
-function chatScreen(id) {
+/** editing: they came from their finished video to ask for changes, so a done chat stays here instead of going back. */
+function chatScreen(id, editing = false) {
   const s = mount("t-chat");
   const log = s.querySelector(".log"), f = s.querySelector("form"), input = f.querySelector("textarea");
   const refit = grow(input);
@@ -301,10 +303,14 @@ function chatScreen(id) {
     }
     first = false;
     status = c.status;
-    if (["queued", "cooking", "done"].includes(status)) return route();
-    // only the newest plan can be generated
+    if (status === "queued" || status === "cooking" || (status === "done" && !editing)) return route();
+    // only the newest plan or edit list can be generated, once; after the first video only edit lists can
     const plans = log.querySelectorAll("[data-plan]");
-    plans.forEach((b, k) => { b.hidden = k !== plans.length - 1 || status === "failed"; });
+    // a failed edit's list can be tried again
+    const made = c.job && c.job.status !== "failed" ? c.job.plan_msg_id : 0;
+    plans.forEach((b, k) => {
+      b.hidden = k !== plans.length - 1 || status === "failed" || +b.dataset.plan <= made || (c.versions.length > 0 && b.dataset.kind === "plan");
+    });
     const waiting = status === "awaiting" || status === "thinking";
     if (!liveBox.isConnected) log.append(liveBox);
     bot?.think(waiting);
@@ -345,6 +351,12 @@ function chatScreen(id) {
   new MutationObserver(pin).observe(log, { childList: true, subtree: true, characterData: true });
   log.addEventListener("load", pin, true);
   log.addEventListener("loadedmetadata", pin, true);
+  if (editing) {
+    input.placeholder = "What should change?";
+    const back = Object.assign(document.createElement("button"), { className: "quiet back", textContent: "← back to your video" });
+    back.onclick = () => route();
+    s.prepend(back);
+  }
   input.addEventListener("input", () => bot?.look(-.2, 1, 900));
   input.focus();
   poll();
@@ -386,21 +398,33 @@ function cooking(id) {
 function done(c) {
   const s = mount("t-done");
   const v = s.querySelector("video");
-  v.src = c.job.video;
+  // the newest finished version; a failed edit after it leaves this one standing
+  const latest = c.versions.at(-1);
+  v.src = latest.video;
   withSound(v);
+  if (c.job.status === "failed") s.querySelector(".notice").textContent = "Your last edit blew up while cooking. You got that generation back; this is still your latest version.";
+  if (c.versions.length > 1) {
+    const vs = s.querySelector(".versions");
+    vs.append("Earlier versions: ");
+    c.versions.slice(0, -1).forEach((x, i) => {
+      if (i) vs.append(" · ");
+      vs.append(Object.assign(document.createElement("a"), { href: x.share, textContent: `v${i + 1}`, target: "_blank" }));
+    });
+  }
+  s.querySelector("[data-edit]").onclick = () => chatScreen(c.id, true);
   const b = s.querySelector("[data-share]");
   b.onclick = async () => {
     if (navigator.share) {
       // cancelling the share sheet rejects with AbortError; anything else is a real failure
-      await navigator.share({ url: c.job.share }).catch((e) => { if (e.name !== "AbortError") console.error(e); });
+      await navigator.share({ url: latest.share }).catch((e) => { if (e.name !== "AbortError") console.error(e); });
       return;
     }
-    await navigator.clipboard.writeText(c.job.share);
+    await navigator.clipboard.writeText(latest.share);
     b.textContent = "Link copied!";
     setTimeout(() => { b.textContent = "Share it"; }, 2000);
   };
   const r = s.querySelector(".rate");
-  r.dataset.job = c.job.id;
+  r.dataset.job = latest.id;
   mountRating(r).catch(console.error);
 }
 

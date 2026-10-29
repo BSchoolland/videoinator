@@ -73,6 +73,7 @@ const chatView = (c: D.Chat, after = 0) => {
   return {
     id: c.id, status: c.status, messages: D.messages(c.id, after),
     live: c.status === "thinking" ? { steps: JSON.parse(c.steps), draft: c.draft } : null,
+    versions: D.versions(c.id).map((v) => ({ id: v.id, video: `/media/${v.video}`, share: url(`/v/${v.id}`) })),
     job: j && { id: j.id, status: j.status, stage: j.stage, pct: j.pct, eta_at: j.eta_at, video: j.video && `/media/${j.video}`, share: j.status === "done" ? url(`/v/${j.id}`) : null, plan_msg_id: j.plan_msg_id },
   };
 };
@@ -99,8 +100,8 @@ route("GET", "/in/:token", (req, p) => {
   // someone already signed in as somebody else opened a forwarded link: show them the video, don't switch accounts
   const current = cookie(req, "vi");
   if (current && current !== p.token && D.userByToken(current)) {
-    const j = chat ? D.jobOf(chat) : null;
-    return Response.redirect(j && D.shared(j.id) ? `/v/${j.id}` : "/", 303);
+    const j = chat ? D.versions(chat).at(-1) : null;
+    return Response.redirect(j ? `/v/${j.id}` : "/", 303);
   }
   return new Response(null, {
     status: 303,
@@ -235,14 +236,14 @@ route("GET", "/api/chats/:id", (req, p) => {
 
 // the public version of a chat's finished video, for links into chats that aren't yours
 route("GET", "/api/chats/:id/share", (_req, p) => {
-  const j = D.jobOf(p.id);
-  if (!j || !D.shared(j.id)) throw new HttpError(404, "no shared video");
+  const j = D.versions(p.id).at(-1);
+  if (!j) throw new HttpError(404, "no shared video");
   return json({ share: `/v/${j.id}` });
 });
 
 route("POST", "/api/chats/:id/messages", async (req, p) => {
   const { c } = myChat(req, p.id);
-  if (!["awaiting", "thinking", "idle"].includes(c.status)) throw bad("this video is already being made");
+  if (!["awaiting", "thinking", "idle", "done"].includes(c.status)) throw bad("this video is already being made");
   D.userSays(c, str((await body(req)).text, "text", 2000));
   return json({ ok: true });
 });
@@ -293,7 +294,7 @@ route("GET", "/api/worker/turns/next", (req) => {
 });
 const parts = (b: any) => {
   if (!Array.isArray(b.parts)) throw bad("parts must be an array");
-  for (const x of b.parts) if (!["text", "media", "plan"].includes(x.kind)) throw bad(`unknown part kind ${x.kind}`);
+  for (const x of b.parts) if (!["text", "media", "plan", "edit"].includes(x.kind)) throw bad(`unknown part kind ${x.kind}`);
   return b.parts;
 };
 route("POST", "/api/worker/chats/:id/say", async (req, p) => {

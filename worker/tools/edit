@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# ./edit "the changes"  -- the agreed list of changes to their finished video, shown with a Make these edits button
+set -euo pipefail
+[ $# -eq 1 ] && [ -n "$1" ] || { echo 'usage: ./edit "the changes"' >&2; exit 2; }
+python3 -c 'import json,sys; print(json.dumps({"kind":"edit","body":sys.argv[1]}))' "$1" >> outbox.jsonl
+echo "edit list posted with a Make these edits button"

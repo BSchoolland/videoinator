@@ -1,5 +1,5 @@
 // One video: a reel project from the chat, then director (who makes the music first) -> critic -> director ->
-// share encode -> upload.
+// share encode -> upload. An edit is a director pass on a copy of the version it changes, then the same delivery.
 // Every stage leaves a marker in the project, so a job reclaimed after a worker restart resumes where it stopped.
 import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
@@ -16,18 +16,19 @@ const MODEL = process.env.DIRECTOR_MODEL ?? "claude-opus-5-5";
 const EFFORT = process.env.DIRECTOR_EFFORT ?? "xhigh";
 
 /** Expected minutes per stage until real runs replace them (mean of the last five of each). */
-const DEFAULT_MINUTES: Record<string, number> = { setup: 2, director1: 58, critic: 12, director2: 35, deliver: 3 };
-const STAGES = Object.keys(DEFAULT_MINUTES);
+const DEFAULT_MINUTES: Record<string, number> = { setup: 2, director1: 58, critic: 12, director2: 35, edit: 40, deliver: 3 };
+const MAKE_STAGES = ["setup", "director1", "critic", "director2", "deliver"];
+const EDIT_STAGES = ["setup", "edit", "deliver"];
 const LABEL: Record<string, string> = {
   setup: "setting up", director1: "music and the first cut", critic: "the critic is watching",
-  director2: "final cut", deliver: "wrapping it up",
+  director2: "final cut", edit: "making your edits", deliver: "wrapping it up",
 };
 
 class Broken extends Error {}
 
-function minutes(): Record<string, number> {
+function minutes(stages: string[]): Record<string, number> {
   const hist: Record<string, number[]> = fs.existsSync(STATS) ? JSON.parse(fs.readFileSync(STATS, "utf8")) : {};
-  return Object.fromEntries(STAGES.map((s) => {
+  return Object.fromEntries(stages.map((s) => {
     const h = (hist[s] ?? []).slice(-5);
     return [s, h.length ? h.reduce((a, b) => a + b, 0) / h.length : DEFAULT_MINUTES[s]];
   }));
@@ -108,11 +109,24 @@ function brief(dir: string, job: Job, msgs: Message[], user: User) {
   return plan.body;
 }
 
+/** The final cut a job delivered (an edit's, or the second director's). */
+const finalMaster = (dir: string) => ["out/edit-master.mp4", "out/cycle-3-master.mp4", "out/cycle-2-master.mp4"]
+  .map((f) => path.join(dir, f)).find((f) => fs.existsSync(f) && (!f.endsWith("edit-master.mp4") || fs.existsSync(path.join(dir, "edit.rendered"))))
+  ?? path.join(dir, "out/cycle-2-master.mp4");
+
 export async function makeVideo(j: { job: Job; chat: Chat; messages: Message[]; user: User }, log: (s: string) => void, signal: AbortSignal): Promise<void> {
   const { job } = j;
   const dir = path.join(RUNS, "jobs", job.id);
+  const editing = !!job.parent_id;
+  const parentDir = editing ? path.join(RUNS, "jobs", job.parent_id!) : "";
+  // an edit starts from a copy of the version it changes, minus that version's own edit outputs
+  if (editing && !fs.existsSync(dir)) {
+    fs.cpSync(parentDir, dir, { recursive: true });
+    for (const f of ["edit.rendered", "out/edit-master.mp4", "out/edit-share.mp4", "BROKEN.md"]) fs.rmSync(path.join(dir, f), { force: true });
+  }
   for (const d of ["assets", "work", "out", "art"]) fs.mkdirSync(path.join(dir, d), { recursive: true });
-  const mins = minutes();
+  const STAGES = editing ? EDIT_STAGES : MAKE_STAGES;
+  const mins = minutes(STAGES);
   const total = STAGES.reduce((a, s) => a + mins[s], 0);
   let stage = "setup", stageStart = Date.now(), ran = true;
 
@@ -134,8 +148,50 @@ export async function makeVideo(j: { job: Job; chat: Chat; messages: Message[]; 
 
   try {
     await report();
-    brief(dir, job, j.messages, j.user);
+    if (editing) await edit();
+    else await make();
 
+    await enter("deliver");
+    const master = editing ? path.join(dir, "out/edit-master.mp4") : path.join(dir, "out/cycle-2-master.mp4");
+    const share = master.replace("-master.mp4", "-share.mp4");
+    if (!fs.existsSync(share)) { sh(PY, ["-m", "reel.deliver", master, share], dir); ran = true; }
+    if (ran) record("deliver", (Date.now() - stageStart) / 60000);
+    // the still a shared link previews with: a frame 40% in, past the opening title
+    const posterFile = path.join(dir, "out/poster.jpg");
+    const dur = Number(sh("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", share], dir));
+    sh("ffmpeg", ["-v", "error", "-y", "-ss", String(dur * 0.4), "-i", share, "-frames:v", "1", "-q:v", "3", posterFile], dir);
+    const { url: posterUrl } = await upload<{ url: string }>("/media?ext=jpg", posterFile);
+    const r = await upload<{ video: string }>(`/jobs/${job.id}/done?poster=${path.basename(posterUrl)}`, share);
+    log(`DONE ${SITE}${r.video}`);
+  } finally {
+    clearInterval(heartbeat);
+  }
+
+  async function edit() {
+    await enter("edit");
+    const changes = j.messages.find((m) => m.id === job.plan_msg_id);
+    if (!changes || changes.kind !== "edit") throw new Error(`edit list ${job.plan_msg_id} is not in the chat`);
+    let n = 1;
+    for (let p = path.join(parentDir, "edit.rendered"); fs.existsSync(p); n++) {
+      const up = fs.readFileSync(path.join(path.dirname(p), "parent"), "utf8").trim();
+      p = path.join(RUNS, "jobs", up, "edit.rendered");
+    }
+    fs.writeFileSync(path.join(dir, "parent"), job.parent_id!);
+    const marker = path.join(dir, "edit.rendered");
+    for (let attempt = 1; attempt <= 2 && !fs.existsSync(marker); attempt++) {
+      ran = true;
+      await agent(dir, prompt("EDIT.md", {
+        DIR: dir, PREV: finalMaster(parentDir), CHANGES: changes.body, N: String(n),
+        MUSIC: `## If the song changes\n\nMake the new one with Suno like this, replacing assets/song.mp3, then rerun \`python -m reel.music\`:\n\n${prompt("MUSIC.md", { TOOLS: path.join(here, "tools") })}`,
+      }), path.join(dir, "director-edit.log"), { effort: EFFORT, signal, env: { PATH: `${path.dirname(PY)}:${process.env.PATH}` } });
+      broken();
+    }
+    if (!fs.existsSync(marker)) throw new Error("the edit director exited twice without a render");
+    if (!fs.existsSync(path.join(dir, "out/edit-master.mp4"))) throw new Error("the edit director marked its render done without out/edit-master.mp4");
+  }
+
+  async function make() {
+    brief(dir, job, j.messages, j.user);
     for (const n of [1, 2]) {
       await enter(`director${n}`);
       const marker = path.join(dir, `cycle-${n}.rendered`);
@@ -182,20 +238,6 @@ export async function makeVideo(j: { job: Job; chat: Chat; messages: Message[]; 
         fs.writeFileSync(coldview, seen.slice(seen.indexOf("## What it")));
       }
     }
-
-    await enter("deliver");
-    const share = path.join(dir, "out/cycle-2-share.mp4");
-    if (!fs.existsSync(share)) { sh(PY, ["-m", "reel.deliver", path.join(dir, "out/cycle-2-master.mp4"), share], dir); ran = true; }
-    if (ran) record("deliver", (Date.now() - stageStart) / 60000);
-    // the still a shared link previews with: a frame 40% in, past the opening title
-    const posterFile = path.join(dir, "out/poster.jpg");
-    const dur = Number(sh("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", share], dir));
-    sh("ffmpeg", ["-v", "error", "-y", "-ss", String(dur * 0.4), "-i", share, "-frames:v", "1", "-q:v", "3", posterFile], dir);
-    const { url: posterUrl } = await upload<{ url: string }>("/media?ext=jpg", posterFile);
-    const r = await upload<{ video: string }>(`/jobs/${job.id}/done?poster=${path.basename(posterUrl)}`, share);
-    log(`DONE ${SITE}${r.video}`);
-  } finally {
-    clearInterval(heartbeat);
   }
 }
 

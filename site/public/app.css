@@ -189,3 +189,13 @@ h2 { text-shadow: 3px 3px 0 var(--yellow), 6px 6px 0 var(--ink); rotate: -1deg; 
 .rate-more textarea { width: 100%; font: 17px var(--body); border: 2px solid var(--ink); border-radius: 12px; padding: 12px 14px; box-shadow: 3px 3px 0 var(--ink); resize: vertical; }
 .rate-more textarea:focus { outline: 0; box-shadow: 3px 3px 0 var(--pink); }
 .rate-done { color: #555; }
+
+/* edits */
+.msg.edit { font-size: 19px; display: flex; flex-direction: column; gap: 14px; box-shadow: 6px 6px 0 var(--pink), 9px 9px 0 var(--ink); }
+.msg.edit .btn { align-self: center; }
+.done-actions { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; }
+.versions { font-size: 15px; color: #555; }
+.versions a { color: var(--ink); }
+.notice:empty, .versions:empty { display: none; }
+.notice { font-weight: 500; color: #b3261e; max-width: 640px; }
+.chat .back { align-self: flex-start; margin: 0 0 8px 4px; }

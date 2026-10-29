@@ -1,16 +1,16 @@
 // One planner turn: the chat's own claude session (resumed turn to turn) in its own directory, sandboxed to
 // web search, Read, and the tools/ commands. What it says comes back through outbox.jsonl.
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { LiveView } from "./live.ts";
-import { post, upload, type Chat, type Media, type Message, type User } from "./site.ts";
+import { post, upload, SITE, type Chat, type Job, type Media, type Message, type User } from "./site.ts";
 
 const MODEL = process.env.PLANNER_MODEL ?? "claude-opus-5-5";
 const EFFORT = process.env.PLANNER_EFFORT ?? "low";
 const TIMEOUT_MS = 8 * 60_000;
-const TOOLS = ["say", "show", "plan", "clip", "grab"];
+const TOOLS = ["say", "show", "plan", "edit", "clip", "grab"];
 const here = import.meta.dirname;
 export const RUNS = process.env.RUNS ?? path.join(process.env.HOME!, "videoinator-runs");
 
@@ -24,6 +24,21 @@ function newInput(messages: Message[], user: User, first: boolean): string {
   const lines = messages.filter((m) => m.sender === "user" && m.id > lastBot).map((m) => m.body);
   if (!lines.length) throw new Error("claimed a turn with no new user message");
   return first ? `${user.name} opened the Epic Video-inator and wrote:\n\n${lines.join("\n\n")}` : lines.join("\n\n");
+}
+
+export interface Turn { chat: Chat; messages: Message[]; user: User; video: Job | null; versions: number }
+
+/** The first turn after a version finishes says which one they're looking at, with a contact sheet of it to Read. */
+function editContext(dir: string, t: Turn): string {
+  const v = t.video;
+  if (!v || t.messages.some((m) => m.sender === "bot" && m.created_at > v.finished_at!)) return "";
+  const out = path.join(RUNS, "jobs", v.id, "out");
+  const share = ["edit-share.mp4", "cycle-2-share.mp4"].map((f) => path.join(out, f)).find((f) => fs.existsSync(f));
+  if (!share) throw new Error(`version ${v.id} has no share cut in ${out}`);
+  const sheet = `video-v${t.versions}.jpg`;
+  const r = spawnSync("ffmpeg", ["-v", "error", "-y", "-i", share, "-vf", "fps=1/3,scale=240:-2,tile=6x5", "-frames:v", "1", path.join(dir, sheet)], { encoding: "utf8" });
+  if (r.status !== 0) throw new Error(`contact sheet for ${v.id} failed: ${r.stderr.trim().slice(-300)}`);
+  return `[Their video is done and they're back to change it. They're looking at version ${t.versions} (${SITE}/v/${v.id}); ${sheet} is a contact sheet of it, one frame every 3 s in order. Read it first.]\n\n`;
 }
 
 /** Runs the turn; live gets the stream-json events as they come. Resolves with the session id. */
@@ -63,7 +78,7 @@ function claude(dir: string, prompt: string, session: { resume?: string; id?: st
   });
 }
 
-export async function runTurn(t: { chat: Chat; messages: Message[]; user: User }, log: (s: string) => void): Promise<void> {
+export async function runTurn(t: Turn, log: (s: string) => void): Promise<void> {
   const dir = chatDir(t.chat.id);
   fs.mkdirSync(path.join(dir, "refs"), { recursive: true });
   for (const tool of TOOLS) {
@@ -73,7 +88,7 @@ export async function runTurn(t: { chat: Chat; messages: Message[]; user: User }
   const outbox = path.join(dir, "outbox.jsonl");
   fs.rmSync(outbox, { force: true });
   const first = !t.chat.session_id;
-  const prompt = newInput(t.messages, t.user, first);
+  const prompt = editContext(dir, t) + newInput(t.messages, t.user, first);
 
   // each bubble goes up the moment the planner writes it, in order
   let sent = 0, flushing: Promise<void> = Promise.resolve();

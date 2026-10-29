@@ -27,6 +27,6 @@ export const upload = async <T = unknown>(p: string, file: string): Promise<T> =
 export interface Request { id: string; name: string; email: string; idea: string; status: string }
 export interface User { id: string; name: string; email: string; credits: number; used: number }
 export interface Media { url: string; type: "video" | "image"; caption?: string }
-export interface Message { id: number; sender: "user" | "bot"; kind: "text" | "media" | "plan"; body: string; media: Media[] }
+export interface Message { id: number; sender: "user" | "bot"; kind: "text" | "media" | "plan" | "edit"; body: string; media: Media[]; created_at: number }
 export interface Chat { id: string; user_id: string; session_id: string | null; claimed_upto: number | null }
-export interface Job { id: string; chat_id: string; plan_msg_id: number; attempts: number }
+export interface Job { id: string; chat_id: string; plan_msg_id: number; parent_id: string | null; attempts: number; finished_at: number | null }

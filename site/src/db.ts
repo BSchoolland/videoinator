@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS messages (
   created_at INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS jobs (
-  id TEXT PRIMARY KEY, chat_id TEXT NOT NULL UNIQUE REFERENCES chats(id), plan_msg_id INTEGER NOT NULL,
+  id TEXT PRIMARY KEY, chat_id TEXT NOT NULL REFERENCES chats(id), plan_msg_id INTEGER NOT NULL, parent_id TEXT,
   status TEXT NOT NULL DEFAULT 'queued', stage TEXT NOT NULL DEFAULT '', pct REAL NOT NULL DEFAULT 0,
   eta_at INTEGER, claimed_at INTEGER, heartbeat_at INTEGER, attempts INTEGER NOT NULL DEFAULT 0,
   video TEXT, error TEXT, created_at INTEGER NOT NULL, finished_at INTEGER
@@ -47,6 +47,23 @@ for (const col of ["steps TEXT NOT NULL DEFAULT '[]'", "draft TEXT NOT NULL DEFA
 addColumn("users", "idea TEXT NOT NULL DEFAULT ''");
 // the still a shared video's link previews with
 addColumn("jobs", "poster TEXT");
+// a chat makes one video, then any number of edits of it: each edit is a job whose parent is the version it changes
+if (((db.query("SELECT sql FROM sqlite_master WHERE name = 'jobs'").get() as { sql: string }).sql).includes("chat_id TEXT NOT NULL UNIQUE")) {
+  db.exec("PRAGMA foreign_keys = OFF");
+  db.transaction(() => {
+    db.exec(`CREATE TABLE jobs_new (
+      id TEXT PRIMARY KEY, chat_id TEXT NOT NULL REFERENCES chats(id), plan_msg_id INTEGER NOT NULL, parent_id TEXT,
+      status TEXT NOT NULL DEFAULT 'queued', stage TEXT NOT NULL DEFAULT '', pct REAL NOT NULL DEFAULT 0,
+      eta_at INTEGER, claimed_at INTEGER, heartbeat_at INTEGER, attempts INTEGER NOT NULL DEFAULT 0,
+      video TEXT, error TEXT, created_at INTEGER NOT NULL, finished_at INTEGER, poster TEXT)`);
+    db.exec(`INSERT INTO jobs_new (id, chat_id, plan_msg_id, status, stage, pct, eta_at, claimed_at, heartbeat_at, attempts, video, error, created_at, finished_at, poster)
+      SELECT id, chat_id, plan_msg_id, status, stage, pct, eta_at, claimed_at, heartbeat_at, attempts, video, error, created_at, finished_at, poster FROM jobs`);
+    db.exec("DROP TABLE jobs");
+    db.exec("ALTER TABLE jobs_new RENAME TO jobs");
+  })();
+  db.exec("PRAGMA foreign_keys = ON");
+}
+db.exec("CREATE INDEX IF NOT EXISTS jobs_chat ON jobs(chat_id, created_at)");
 db.exec(`UPDATE users SET idea = COALESCE((SELECT r.idea FROM requests r WHERE lower(r.email) = lower(users.email)
   AND r.status = 'approved' AND r.idea != '' ORDER BY r.created_at DESC LIMIT 1), '') WHERE idea = ''`);
 
@@ -60,8 +77,8 @@ export interface Media { url: string; type: "video" | "image"; caption?: string 
 export interface Request { id: string; name: string; email: string; idea: string; status: string; announced: number; created_at: number }
 export interface User { id: string; name: string; email: string; token: string; credits: number; used: number; idea: string }
 export interface Chat { id: string; user_id: string; status: ChatStatus; claimed_at: number | null; claimed_upto: number | null; session_id: string | null; created_at: number; steps: string; draft: string }
-export interface Message { id: number; chat_id: string; sender: "user" | "bot"; kind: "text" | "media" | "plan"; body: string; media: Media[]; created_at: number }
-export interface Job { id: string; chat_id: string; plan_msg_id: number; status: string; stage: string; pct: number; eta_at: number | null; claimed_at: number | null; heartbeat_at: number | null; attempts: number; video: string | null; poster: string | null; error: string | null; created_at: number; finished_at: number | null }
+export interface Message { id: number; chat_id: string; sender: "user" | "bot"; kind: "text" | "media" | "plan" | "edit"; body: string; media: Media[]; created_at: number }
+export interface Job { id: string; chat_id: string; plan_msg_id: number; parent_id: string | null; status: string; stage: string; pct: number; eta_at: number | null; claimed_at: number | null; heartbeat_at: number | null; attempts: number; video: string | null; poster: string | null; error: string | null; created_at: number; finished_at: number | null }
 
 const one = <T>(sql: string, ...p: any[]) => (db.query(sql).get(...p) as T | null) ?? null;
 const all = <T>(sql: string, ...p: any[]) => db.query(sql).all(...p) as T[];
@@ -136,19 +153,21 @@ export function addMessage(chatId: string, sender: Message["sender"], kind: Mess
 export function userSays(c: Chat, text: string) {
   db.transaction(() => {
     addMessage(c.id, "user", "text", text);
-    if (c.status === "idle") run("UPDATE chats SET status = 'awaiting' WHERE id = ?", c.id);
+    if (c.status === "idle" || c.status === "done") run("UPDATE chats SET status = 'awaiting' WHERE id = ?", c.id);
   })();
 }
 
 /** The oldest chat owed a reply, claimed: its status goes to thinking, remembering how far it had read. */
-export function claimTurn(): { chat: Chat; messages: Message[]; user: User } | null {
+/** A turn, plus the chat's newest finished version and how many there are, when the chat is past its first video. */
+export function claimTurn(): { chat: Chat; messages: Message[]; user: User; video: Job | null; versions: number } | null {
   return db.transaction(() => {
     run("UPDATE chats SET status = 'awaiting' WHERE status = 'thinking' AND claimed_at < ?", now() - TURN_LEASE_MS);
     const c = one<Chat>("SELECT * FROM chats WHERE status = 'awaiting' ORDER BY created_at LIMIT 1");
     if (!c) return null;
     const upto = one<{ m: number }>("SELECT max(id) AS m FROM messages WHERE chat_id = ?", c.id)!.m;
     run("UPDATE chats SET status = 'thinking', claimed_at = ?, claimed_upto = ?, steps = '[]', draft = '' WHERE id = ?", now(), upto, c.id);
-    return { chat: chat(c.id)!, messages: messages(c.id), user: userById(c.user_id)! };
+    const vs = versions(c.id);
+    return { chat: chat(c.id)!, messages: messages(c.id), user: userById(c.user_id)!, video: vs.at(-1) ?? null, versions: vs.length };
   })();
 }
 
@@ -192,7 +211,10 @@ export function botReplies(chatId: string, parts: Part[], sessionId: string) {
 }
 
 // ---------------------------------------------------------------- jobs
-export const jobOf = (chatId: string) => one<Job>("SELECT * FROM jobs WHERE chat_id = ?", chatId);
+/** The chat's newest job: its video, or the edit in progress. */
+export const jobOf = (chatId: string) => one<Job>("SELECT * FROM jobs WHERE chat_id = ? ORDER BY created_at DESC LIMIT 1", chatId);
+/** Every finished version of the chat's video, oldest first. */
+export const versions = (chatId: string) => all<Job>("SELECT * FROM jobs WHERE chat_id = ? AND status = 'done' ORDER BY created_at", chatId);
 export const job = (id: string) => one<Job>("SELECT * FROM jobs WHERE id = ?", id);
 
 /** Generate: spends one credit and queues the video. */
@@ -200,12 +222,15 @@ export function generate(c: Chat, planMsgId: number): Job {
   return db.transaction(() => {
     const u = userById(c.user_id)!;
     if (u.used >= u.credits) throw new Error("no generations left");
-    if (jobOf(c.id)) throw new Error("this chat already made its video");
     const plan = message(planMsgId);
-    if (!plan || plan.chat_id !== c.id || plan.kind !== "plan") throw new Error("that isn't a plan in this chat");
+    if (!plan || plan.chat_id !== c.id || (plan.kind !== "plan" && plan.kind !== "edit")) throw new Error("that isn't a plan in this chat");
+    const latest = jobOf(c.id), base = versions(c.id).at(-1);
+    if (latest && (latest.status === "queued" || latest.status === "running")) throw new Error("this video is already cooking");
+    if (plan.kind === "plan" && latest) throw new Error("this chat already made its video; ask for edits instead");
+    if (plan.kind === "edit" && !base) throw new Error("there's no finished video to edit yet");
     run("UPDATE users SET used = used + 1 WHERE id = ?", u.id);
     const id = newId(6);
-    run("INSERT INTO jobs (id, chat_id, plan_msg_id, created_at) VALUES (?, ?, ?, ?)", id, c.id, planMsgId, now());
+    run("INSERT INTO jobs (id, chat_id, plan_msg_id, parent_id, created_at) VALUES (?, ?, ?, ?, ?)", id, c.id, planMsgId, plan.kind === "edit" ? base!.id : null, now());
     run("UPDATE chats SET status = 'queued' WHERE id = ?", c.id);
     return job(id)!;
   })();
@@ -244,7 +269,10 @@ export function failJob(id: string, error: string) {
   db.transaction(() => {
     const j = job(id)!;
     run("UPDATE jobs SET status = 'failed', error = ?, finished_at = ? WHERE id = ?", error, now(), id);
-    run("UPDATE chats SET status = 'failed' WHERE id = ?", j.chat_id);
+    if (j.parent_id) {
+      addMessage(j.chat_id, "bot", "text", "That edit blew up while cooking. Ben's been told, you got your generation back, and your last version is still right here.");
+      run("UPDATE chats SET status = 'done' WHERE id = ?", j.chat_id);
+    } else run("UPDATE chats SET status = 'failed' WHERE id = ?", j.chat_id);
     run("UPDATE users SET used = used - 1 WHERE id = (SELECT user_id FROM chats WHERE id = ?)", j.chat_id);
   })();
 }
@@ -254,7 +282,9 @@ export const setPoster = (id: string, poster: string) => run("UPDATE jobs SET po
 export function shared(jobId: string): { video: string; poster: string | null; title: string } | null {
   const j = job(jobId);
   if (!j || j.status !== "done" || !j.video) return null;
-  const plan = message(j.plan_msg_id);
+  let root = j;
+  while (root.parent_id) root = job(root.parent_id)!;
+  const plan = message(root.plan_msg_id);
   const title = (plan?.body.split("\n").find((l) => l.trim()) ?? "An epic video").replace(/^[#*\s]+|[*\s]+$/g, "").slice(0, 90);
   return { video: j.video, poster: j.poster, title };
 }

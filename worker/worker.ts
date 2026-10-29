@@ -6,7 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { Broken, makeVideo } from "./make.ts";
-import { runTurn } from "./planner.ts";
+import { runTurn, type Turn } from "./planner.ts";
 import { get, post, SITE, type Chat, type Job, type Message, type Request, type User } from "./site.ts";
 
 const TURN_SLOTS = Number(process.env.TURN_SLOTS ?? 3);
@@ -66,7 +66,7 @@ async function announceRatings() {
 // ---------------------------------------------------------------- planner turns
 let turns = 0;
 async function nextTurn() {
-  const t = await get<{ chat: Chat; messages: Message[]; user: User }>("/turns/next");
+  const t = await get<Turn>("/turns/next");
   if (!t) return false;
   turns++;
   const tag = `chat ${t.chat.id}`;
@@ -93,7 +93,9 @@ async function nextJob() {
   const ac = new AbortController();
   log(tag, `video for ${j.user.name} (attempt ${j.job.attempts})`);
   makeVideo(j, (s) => log(tag, s), ac.signal)
-    .then(() => tellBenBot(`Epic Video-inator: ${j.user.name}'s video is done and they've been emailed (job ${j.job.id}, files in ~/videoinator-runs/jobs/${j.job.id}, share cut out/cycle-2-share.mp4, critique critique-c1.md). Tell Ben in thread ${THREAD}; watch it first if you can.`))
+    .then(() => tellBenBot(j.job.parent_id
+      ? `Epic Video-inator: ${j.user.name}'s edit is done and they've been emailed (job ${j.job.id}, an edit of ${j.job.parent_id}; files in ~/videoinator-runs/jobs/${j.job.id}, share cut out/edit-share.mp4, what changed in STATE.md under "# EDIT"). Tell Ben in thread ${THREAD}; watch it first if you can.`
+      : `Epic Video-inator: ${j.user.name}'s video is done and they've been emailed (job ${j.job.id}, files in ~/videoinator-runs/jobs/${j.job.id}, share cut out/cycle-2-share.mp4, critique critique-c1.md). Tell Ben in thread ${THREAD}; watch it first if you can.`))
     .catch(async (e) => {
       const why = e instanceof Broken ? e.message : `something broke: ${msg(e)}`;
       log(tag, `FAILED: ${why}`);

@@ -354,12 +354,13 @@ function cooking(id) {
   const s = mount("t-cooking");
   const eta = s.querySelector(".eta"), fill = s.querySelector(".fill");
   // "True story of what's happening rn": a random one, then another random one each time it ends, never the same
-  // twice in a row. The list is whatever's in /loops (GET /api/stories), so adding one is dropping in the file.
+  // twice in a row. The list is whatever's in /loops (GET /api/stories): adding one is dropping in NAME.mp4 and its NAME.jpg poster.
   const story = s.querySelector(".story");
   let stories = [], current = "";
   const next = () => {
     const pick = stories.filter((x) => x !== current);
     current = (pick.length ? pick : stories)[Math.floor(Math.random() * (pick.length || stories.length))];
+    story.poster = `/loops/${current.replace(/\.mp4$/, ".jpg")}`;
     story.src = `/loops/${current}`;
     withSound(story);
   };

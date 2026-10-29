@@ -127,7 +127,10 @@ route("GET", "/v/:id", (_req, p) => {
 <meta property="og:image" content="${img}"><meta property="og:image:width" content="1080"><meta property="og:image:height" content="1080">
 <meta property="og:video" content="${mp4}"><meta property="og:video:secure_url" content="${mp4}"><meta property="og:video:type" content="video/mp4">
 <meta property="og:video:width" content="1080"><meta property="og:video:height" content="1080">
-<meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="${t}"><meta name="twitter:image" content="${img}">
+<meta name="twitter:card" content="player"><meta name="twitter:title" content="${t}"><meta name="twitter:image" content="${img}">
+<meta name="twitter:player" content="${url(`/embed/${p.id}`)}"><meta name="twitter:player:width" content="1080"><meta name="twitter:player:height" content="1080">
+<meta name="twitter:player:stream" content="${mp4}"><meta name="twitter:player:stream:content_type" content="video/mp4">
+<link rel="alternate" type="application/json+oembed" href="${url(`/oembed?url=${encodeURIComponent(page)}`)}" title="${t}">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bungee&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/app.css"></head><body><main id="app"><section class="screen center shared">
@@ -135,6 +138,27 @@ route("GET", "/v/:id", (_req, p) => {
 <video class="final" src="${mp4}" poster="${img}" controls playsinline></video>
 <a class="btn go" href="/">Make your own epic video</a>
 </section></main></body></html>`, { headers: { "content-type": "text/html; charset=utf-8" } });
+});
+// the bare player Slack and X frame in their link previews
+route("GET", "/embed/:id", (_req, p) => {
+  const v = D.shared(p.id);
+  if (!v) return new Response("not found", { status: 404 });
+  const img = v.poster ? url(`/media/${v.poster}`) : url("/og.jpg");
+  return new Response(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(v.title)}</title>
+<style>html,body{margin:0;height:100%;background:#000}video{width:100%;height:100%;object-fit:contain;display:block}</style></head>
+<body><video src="${url(`/media/${v.video}`)}" poster="${img}" controls playsinline></video></body></html>`,
+    { headers: { "content-type": "text/html; charset=utf-8" } });
+});
+route("GET", "/oembed", (req) => {
+  const id = /\/v\/([^/?#]+)/.exec(new URL(req.url).searchParams.get("url") ?? "")?.[1];
+  const v = id && D.shared(id);
+  if (!v) return new Response("not found", { status: 404 });
+  return json({
+    version: "1.0", type: "video", provider_name: "Epic Video-inator", provider_url: url("/"), title: v.title,
+    thumbnail_url: v.poster ? url(`/media/${v.poster}`) : url("/og.jpg"), thumbnail_width: 1080, thumbnail_height: 1080,
+    width: 1080, height: 1080,
+    html: `<iframe src="${url(`/embed/${id}`)}" width="1080" height="1080" frameborder="0" allow="autoplay; fullscreen" allowfullscreen></iframe>`,
+  });
 });
 route("GET", "/api/stories", () => json({
   stories: readdirSync(join(PUBLIC, "loops")).filter((f) => f.endsWith(".mp4") && f !== "transition.mp4").sort(),
@@ -314,12 +338,13 @@ Bun.serve({
   async fetch(req, server) {
     const u = new URL(req.url);
     const ip = req.headers.get("x-forwarded-for")?.split(",")[0]!.trim() ?? server.requestIP(req)?.address ?? "?";
+    const method = req.method === "HEAD" ? "GET" : req.method;
     try {
       for (const [m, re, h] of routes) {
-        const hit = req.method === m && re.exec(u.pathname);
+        const hit = method === m && re.exec(u.pathname);
         if (hit) return await h(req, hit.groups ?? {}, ip);
       }
-      if (req.method === "GET") {
+      if (method === "GET") {
         const rel = u.pathname === "/" ? "index.html" : u.pathname.slice(1);
         return file(under(PUBLIC, rel), req);
       }

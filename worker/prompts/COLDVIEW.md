@@ -1,9 +1,9 @@
 You're watching a short video cold, the way someone scrolling their feed would: nobody has told you anything about it.
-It's about 90 seconds, sampled here at one frame per second in time order, 9 frames per sheet (left to right, top to
+It's about 90 seconds, sampled here at four frames per second in time order, 9 frames per sheet (left to right, top to
 bottom), with the timestamp in each frame's corner: sheet_01.jpg, sheet_02.jpg, ... in this directory. There's music
 but you can't hear it; any words are on screen. Read every sheet with the Read tool, in order, before you write.
 
-Then write {OUT} with exactly these sections:
+Then reply with exactly these sections (your reply is saved as-is; there's nothing to write to):
 
 ## What it's about
 In two or three sentences: who is it about, what are they trying to do, and how does it end? Say it plainly, as

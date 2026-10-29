@@ -53,15 +53,25 @@ function agent(dir: string, text: string, logFile: string, opts: { effort: strin
   });
 }
 
-/** The cold viewer: may only Read (its frames) and write its one file, from a directory with nothing else in it. */
-function coldViewer(cwd: string, text: string, logFile: string, signal: AbortSignal): Promise<number> {
-  const args = ["-p", "--model", MODEL, "--effort", "high", "--tools", "Read,Write", "--allowedTools", "Read", "Write(coldview.md)",
+/** The cold viewer: may only Read, from a directory holding nothing but its frame sheets. Resolves with its reply. */
+function coldViewer(cwd: string, text: string, logFile: string, signal: AbortSignal): Promise<string> {
+  const args = ["-p", "--model", MODEL, "--effort", "high", "--tools", "Read", "--allowedTools", "Read",
     "--permission-mode", "dontAsk", "--output-format", "stream-json", "--verbose"];
   return new Promise((resolve, reject) => {
-    const out = fs.openSync(logFile, "a");
-    const child = spawn("claude", args, { cwd, stdio: ["pipe", out, out], signal });
-    child.on("error", (e) => { fs.closeSync(out); reject(e); });
-    child.on("close", (code) => { fs.closeSync(out); resolve(code ?? -1); });
+    const log = fs.createWriteStream(logFile, { flags: "a" });
+    const child = spawn("claude", args, { cwd, stdio: ["pipe", "pipe", "pipe"], signal });
+    let buf = "", result = "";
+    child.stdout.on("data", (d) => {
+      log.write(d); buf += d;
+      let i;
+      while ((i = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, i); buf = buf.slice(i + 1);
+        if (line.includes('"type":"result"')) result = String(JSON.parse(line).result ?? "");
+      }
+    });
+    child.stderr.on("data", (d) => log.write(d));
+    child.on("error", (e) => { log.end(); reject(e); });
+    child.on("close", () => { log.end(); resolve(result); });
     child.stdin!.end(text);
   });
 }
@@ -161,12 +171,12 @@ export async function makeVideo(j: { job: Job; chat: Chat; messages: Message[]; 
         fs.rmSync(cold, { recursive: true, force: true });
         fs.mkdirSync(cold, { recursive: true });
         sh("ffmpeg", ["-v", "error", "-i", path.join(dir, "out/cycle-1-master.mp4"), "-vf",
-          "fps=1,scale=360:-2,drawtext=text='%{pts\\:hms}':x=6:y=6:fontsize=18:fontcolor=yellow:box=1:boxcolor=black@0.6,tile=3x3",
+          "fps=4,scale=360:-2,drawtext=text='%{pts\\:hms}':x=6:y=6:fontsize=18:fontcolor=yellow:box=1:boxcolor=black@0.6,tile=3x3",
           path.join(cold, "sheet_%02d.jpg")], cold);
         ran = true;
-        await coldViewer(cold, prompt("COLDVIEW.md", { OUT: "coldview.md" }), path.join(dir, "coldview-c1.log"), signal);
-        if (!fs.existsSync(path.join(cold, "coldview.md"))) throw new Error("the cold viewer wrote nothing");
-        fs.copyFileSync(path.join(cold, "coldview.md"), coldview);
+        const seen = await coldViewer(cold, prompt("COLDVIEW.md", {}), path.join(dir, "coldview-c1.log"), signal);
+        if (!seen.includes("## What it")) throw new Error(`the cold viewer gave no review: ${seen.slice(0, 300)}`);
+        fs.writeFileSync(coldview, seen.slice(seen.indexOf("## What it")));
       }
     }
 

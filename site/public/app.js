@@ -289,6 +289,7 @@ function chatScreen(id) {
 
   const render = (c) => {
     for (const m of c.messages) {
+      if (m.id <= last) continue;
       const el = bubble(m, c, generate);
       if (!first) el.classList.add("land");
       log.insertBefore(el, liveBox.isConnected ? liveBox : null);
@@ -318,12 +319,16 @@ function chatScreen(id) {
     pin();
   };
 
-  const poll = async () => {
+  // one poll at a time: sending a message polls right away instead of starting a second loop
+  let timer = 0, polling = null;
+  const poll = () => polling ??= (async () => {
+    clearTimeout(timer);
     if (!alive) return;
     try { render(await api(`/api/chats/${id}?after=${last}`)); }
     catch (x) { if (x.status === 404) return home(); console.error(x); }
-    if (alive) setTimeout(poll, status === "awaiting" || status === "thinking" ? LIVE_POLL_MS : POLL_MS);
-  };
+    finally { polling = null; }
+    if (alive) timer = setTimeout(poll, status === "awaiting" || status === "thinking" ? LIVE_POLL_MS : POLL_MS);
+  })();
 
   f.onsubmit = async (e) => {
     e.preventDefault();

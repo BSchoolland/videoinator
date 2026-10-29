@@ -20,4 +20,15 @@ nothing lost you, say "nowhere".
 ## The point
 Did the ending land, and did you get the joke? One or two sentences.
 
+## Was it cool?
+Honestly: would you have watched to the end, sent it to a friend, or scrolled past? Why? Don't be polite.
+
+## Where I got bored
+Every stretch where your attention dropped (timestamps), and why: too long, repetitive, nothing happening, no idea
+where it was going. If you never got bored, say "never".
+
+## What I'd change
+Your best few improvements, biggest first. Include jokes that could have landed better and how: a sharper setup, a
+better payoff, cutting it shorter, holding a beat longer. Be concrete.
+
 Judge only what's on screen. You have no brief and no other files, and you shouldn't look for any.

@@ -47,6 +47,11 @@ for (const col of ["steps TEXT NOT NULL DEFAULT '[]'", "draft TEXT NOT NULL DEFA
 addColumn("users", "idea TEXT NOT NULL DEFAULT ''");
 // the still a shared video's link previews with
 addColumn("jobs", "poster TEXT");
+// the newest user message the planner has actually answered; a message sent while it was mid-turn is newer
+if (!(db.query("PRAGMA table_info(chats)").all() as { name: string }[]).some((c) => c.name === "seen_upto")) {
+  addColumn("chats", "seen_upto INTEGER");
+  db.exec("UPDATE chats SET seen_upto = claimed_upto");
+}
 // a chat makes one video, then any number of edits of it: each edit is a job whose parent is the version it changes
 if (((db.query("SELECT sql FROM sqlite_master WHERE name = 'jobs'").get() as { sql: string }).sql).includes("chat_id TEXT NOT NULL UNIQUE")) {
   db.exec("PRAGMA foreign_keys = OFF");
@@ -76,7 +81,7 @@ export type ChatStatus = "awaiting" | "thinking" | "idle" | "queued" | "cooking"
 export interface Media { url: string; type: "video" | "image"; caption?: string }
 export interface Request { id: string; name: string; email: string; idea: string; status: string; announced: number; created_at: number }
 export interface User { id: string; name: string; email: string; token: string; credits: number; used: number; idea: string }
-export interface Chat { id: string; user_id: string; status: ChatStatus; claimed_at: number | null; claimed_upto: number | null; session_id: string | null; created_at: number; steps: string; draft: string }
+export interface Chat { id: string; user_id: string; status: ChatStatus; claimed_at: number | null; claimed_upto: number | null; seen_upto: number | null; session_id: string | null; created_at: number; steps: string; draft: string }
 export interface Message { id: number; chat_id: string; sender: "user" | "bot"; kind: "text" | "media" | "plan" | "edit"; body: string; media: Media[]; created_at: number }
 export interface Job { id: string; chat_id: string; plan_msg_id: number; parent_id: string | null; status: string; stage: string; pct: number; eta_at: number | null; claimed_at: number | null; heartbeat_at: number | null; attempts: number; video: string | null; poster: string | null; error: string | null; created_at: number; finished_at: number | null }
 
@@ -193,7 +198,8 @@ export function live(chatId: string, steps: Step[] | undefined, draft: string | 
 }
 
 /** The planner's turn ends (with any last bubbles); if the user said more meanwhile, the chat is owed another reply. */
-export function botReplies(chatId: string, parts: Part[], sessionId: string) {
+/** answered: the turn really answered what it claimed (a failed turn's apology didn't). */
+export function botReplies(chatId: string, parts: Part[], sessionId: string, answered: boolean) {
   db.transaction(() => {
     const c = chat(chatId);
     if (!c) throw new Error(`no chat ${chatId}`);
@@ -207,6 +213,7 @@ export function botReplies(chatId: string, parts: Part[], sessionId: string) {
     for (const p of parts) addMessage(chatId, "bot", p.kind, p.body, p.media ?? []);
     const newer = one<{ n: number }>("SELECT count(*) AS n FROM messages WHERE chat_id = ? AND sender = 'user' AND id > ?", chatId, c.claimed_upto ?? 0)!.n;
     run("UPDATE chats SET status = ?, session_id = COALESCE(NULLIF(?, ''), session_id), claimed_at = NULL, steps = '[]', draft = '' WHERE id = ?", newer ? "awaiting" : "idle", sessionId, chatId);
+    if (answered) run("UPDATE chats SET seen_upto = claimed_upto WHERE id = ?", chatId);
   })();
 }
 

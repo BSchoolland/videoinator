@@ -18,10 +18,9 @@ export const chatDir = (chatId: string) => path.join(RUNS, "chats", chatId);
 
 interface Part { kind: Message["kind"]; body: string; files?: string[] }
 
-/** The user's messages since the planner last spoke, as the next prompt. */
-function newInput(messages: Message[], user: User, first: boolean): string {
-  const lastBot = messages.reduce((m, x) => (x.sender === "bot" ? x.id : m), 0);
-  const lines = messages.filter((m) => m.sender === "user" && m.id > lastBot).map((m) => m.body);
+/** The user's messages it hasn't answered yet (some may have landed while it was mid-turn), as the next prompt. */
+function newInput(messages: Message[], user: User, first: boolean, seenUpto: number): string {
+  const lines = messages.filter((m) => m.sender === "user" && m.id > seenUpto).map((m) => m.body);
   if (!lines.length) throw new Error("claimed a turn with no new user message");
   return first ? `${user.name} opened the Epic Video-inator and wrote:\n\n${lines.join("\n\n")}` : lines.join("\n\n");
 }
@@ -88,7 +87,7 @@ export async function runTurn(t: Turn, log: (s: string) => void): Promise<void> 
   const outbox = path.join(dir, "outbox.jsonl");
   fs.rmSync(outbox, { force: true });
   const first = !t.chat.session_id;
-  const prompt = editContext(dir, t) + newInput(t.messages, t.user, first);
+  const prompt = editContext(dir, t) + newInput(t.messages, t.user, first, t.chat.seen_upto ?? 0);
 
   // each bubble goes up the moment the planner writes it, in order
   let sent = 0, flushing: Promise<void> = Promise.resolve();

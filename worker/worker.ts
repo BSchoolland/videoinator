@@ -74,7 +74,7 @@ async function nextTurn() {
   runTurn(t, (s) => log(tag, s))
     .catch(async (e) => {
       log(tag, `TURN FAILED: ${msg(e)}`);
-      await post(`/chats/${t.chat.id}/reply`, { parts: [{ kind: "text", body: "My brain blue-screened for a second there. Say that again?" }], session: t.chat.session_id ?? "" })
+      await post(`/chats/${t.chat.id}/reply`, { parts: [{ kind: "text", body: "My brain blue-screened for a second there. Say that again?" }], session: t.chat.session_id ?? "", failed: true })
         .catch((x) => log(tag, `could not post the error reply: ${msg(x)}`));
       await tellBenBot(`Epic Video-inator: a planner turn failed for ${t.user.name} (chat ${t.chat.id}); they were shown "My brain blue-screened for a second there. Say that again?". Error: ${msg(e).slice(0, 500)}. Tell Ben in thread ${THREAD}.`)
         .catch((x) => log(tag, `could not tell Ben: ${msg(x)}`));
